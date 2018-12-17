@@ -26,6 +26,8 @@ void ServerImpl::Run()
 void ServerImpl::HandleRpcs()
 {
     new ClientRegisterCallData(&service_, cq_.get());
+    new TestCallData(&service_, cq_.get());
+
     void* tag;
     bool ok;
     while (true)

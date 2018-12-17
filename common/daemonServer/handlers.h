@@ -80,4 +80,43 @@ private:
     ServerAsyncResponseWriter<ClientRegisterReply> responder_;
 };
 
+class TestCallData : public CallData
+{
+public:
+    TestCallData(DaemonServer::AsyncService* service, ServerCompletionQueue* cq) :
+        CallData(service, cq), responder_(&ctx_)
+    {
+        Proceed();
+    }
+
+    void Proceed()
+    {
+        if (status_ == CREATE)
+        {
+            status_ = PROCESS;
+            service_->RequestTest(&ctx_, &request_, &responder_, cq_, cq_, this);
+        }
+        else if (status_ == PROCESS)
+        {
+            new TestCallData(service_, cq_);
+
+            std::cout << "content:" << request_.content() << std::endl;
+            reply_.set_err(common::SUCCESS);
+
+            status_ = FINISH;
+            responder_.Finish(reply_, Status::OK, this);
+        }
+        else
+        {
+            GPR_ASSERT(status_ == FINISH);
+            delete this;
+        }
+    }
+
+private:
+    TestRequest request_;
+    TestReply reply_;
+    ServerAsyncResponseWriter<TestReply> responder_;
+};
+
 }; // namespace daemon_server

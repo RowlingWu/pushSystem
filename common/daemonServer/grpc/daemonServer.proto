@@ -5,6 +5,7 @@ package daemon_server;
 service DaemonServer
 {
     rpc ClientRegister (ClientRegisterRequest) returns (ClientRegisterReply) {}
+    rpc Test (TestRequest) returns (TestReply) {}
 }
 
 message ClientRegisterRequest
@@ -15,6 +16,16 @@ message ClientRegisterRequest
 }
 
 message ClientRegisterReply
+{
+    int32 err = 1;
+}
+
+message TestRequest
+{
+    string content = 1;
+}
+
+message TestReply
 {
     int32 err = 1;
 }
