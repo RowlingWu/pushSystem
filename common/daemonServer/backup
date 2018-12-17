@@ -1,0 +1,26 @@
+CXX = g++ -I/home/l/grpc/include
+CPPFLAGS += `pkg-config --cflags protobuf grpc`
+CXXFLAGS += -std=c++11
+LDFLAGS += -L/usr/local/lib -L/home/l/grpc/libs/opt \
+		  `pkg-config --libs protobuf grpc++ grpc` \
+		  -Wl,--no-as-needed -lgrpc++_reflection -Wl,--as-needed\
+		  -ldl
+
+PROTOS_PATH = grpc
+GRPC_CPP_PLUGIN_PATH ?= `which grpc_cpp_plugin`
+
+vpath %.proto $(PROTOS_PATH)
+vpath %.cc ./gen-cpp
+
+all: daemon_server
+
+daemon_server: daemonServer.pb.o daemonServer.grpc.pb.o daemonServer.o
+	$(CXX) $^ $(LDFLAGS) -o $@
+
+.PRECIOUS: %.grpc.pb.cc
+%.grpc.pb.cc: %.proto
+	protoc -I $(PROTOS_PATH) --grpc_out=gen-cpp --plugin=protoc-gen-grpc=$(GRPC_CPP_PLUGIN_PATH) $<
+
+.PRECIOUS: %.pb.cc
+%.pb.cc: %.proto
+	protoc -I $(PROTOS_PATH) --cpp_out=gen-cpp $<

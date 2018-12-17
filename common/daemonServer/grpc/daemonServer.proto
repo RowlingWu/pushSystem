@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+package daemon_server;
+
+service DaemonServer
+{
+    rpc ClientRegister (ClientRegisterRequest) returns (ClientRegisterReply) {}
+}
+
+message ClientRegisterRequest
+{
+    string address = 1; // IP and port
+    string proc_name = 2;
+    uint32 group_id = 3;
+}
+
+message ClientRegisterReply
+{
+    int32 err = 1;
+}
