@@ -10,6 +10,7 @@
 
 #include <grpcpp/grpcpp.h>
 #include <grpc/support/log.h>
+#include <boost/algorithm/string.hpp>
 
 #include "gen-cpp/daemonServer.grpc.pb.h"
 #include "../common/errCode.h"
@@ -78,6 +79,8 @@ private:
     HeartBeatReply reply_;
     ServerAsyncResponseWriter<HeartBeatReply> responder_;
 };
+
+string parseAndGetIp(const string& peer);
 
 }; // namespace daemon_server
 
