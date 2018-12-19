@@ -34,10 +34,10 @@ struct ClientRegisterAsyncCall : public AsyncCall
     void OnGetResponse();
 };
 
-struct TestAsyncCall : public AsyncCall
+struct HeartBeatAsyncCall : public AsyncCall
 {
-    TestReply reply;
-    std::unique_ptr<ClientAsyncResponseReader<TestReply>> response_reader;
+    HeartBeatReply reply;
+    std::unique_ptr<ClientAsyncResponseReader<HeartBeatReply>> response_reader;
     void OnGetResponse();
 };
 
@@ -49,7 +49,6 @@ public:
     void AsyncCompleteRpc();
 
     void ClientRegister(ClientRegisterRequest& req);
-    void Test(TestRequest& req);
 
 private:
     std::unique_ptr<DaemonServer::Stub> stub_;

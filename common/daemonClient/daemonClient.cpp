@@ -35,22 +35,13 @@ void DaemonClientImpl::ClientRegister(ClientRegisterRequest& req)
     call->response_reader->Finish(&call->reply, &call->status, (void*)call);
 }
 
-void DaemonClientImpl::Test(TestRequest& req)
-{
-    TestAsyncCall* call = new TestAsyncCall;
-    call->response_reader = stub_->PrepareAsyncTest(&call->context, req, &cq_);
-    call->response_reader->StartCall();
-    call->response_reader->Finish(&call->reply, &call->status, (void*)call);
-}
-
 void ClientRegisterAsyncCall::OnGetResponse()
 {
     std::cout << "Register errCode:" << reply.err() << std::endl;
 }
 
-void TestAsyncCall::OnGetResponse()
+void HeartBeatAsyncCall::OnGetResponse()
 {
-    std::cout << "Test errCode:" << reply.err() << std::endl;
 }
 
 }; // namespace daemon_client
