@@ -10,7 +10,7 @@ service DaemonServer
 
 message ClientRegisterRequest
 {
-    string address = 1; // IP and port
+    string listening_port = 1;
     string proc_name = 2;
     uint32 group_id = 3;
 }

@@ -3,12 +3,19 @@
 namespace daemon_client
 {
 
-DaemonClientImpl::DaemonClientImpl(std::shared_ptr<Channel> channel) : stub_(DaemonServer::NewStub(channel))
+DaemonClientImpl::DaemonClientImpl(shared_ptr<Channel> channel, string port, string procName, uint32_t groupId) :
+    stub_(DaemonServer::NewStub(channel)),
+    listeningPort_(port),
+    procName_(procName),
+    groupId_(groupId),
+    clientStatus_(NO_SERVER)
 {
 }
 
 void DaemonClientImpl::AsyncCompleteRpc()
 {
+    clientStatusThread_ = thread(&DaemonClientImpl::ClientStatusHandler, this);
+
     void* got_tag;
     bool ok = false;
     while (cq_.Next(&got_tag, &ok))
@@ -17,11 +24,11 @@ void DaemonClientImpl::AsyncCompleteRpc()
         GPR_ASSERT(ok);
         if (call->status.ok())
         {
-            call->OnGetResponse();
+            call->OnGetResponse(this);
         }
         else
         {
-            std::cout << "RPC failed\n";
+            cout << "RPC failed\n";
         }
         delete call;
     }
@@ -35,13 +42,70 @@ void DaemonClientImpl::ClientRegister(ClientRegisterRequest& req)
     call->response_reader->Finish(&call->reply, &call->status, (void*)call);
 }
 
-void ClientRegisterAsyncCall::OnGetResponse()
+void DaemonClientImpl::HeartBeat(HeartBeatRequest& req)
 {
-    std::cout << "Register errCode:" << reply.err() << std::endl;
+    HeartBeatAsyncCall* call = new HeartBeatAsyncCall;
+    call->response_reader = stub_->PrepareAsyncHeartBeat(&call->context, req, &cq_);
+    call->response_reader->StartCall();
+    call->response_reader->Finish(&call->reply, &call->status, (void*)call);
 }
 
-void HeartBeatAsyncCall::OnGetResponse()
+void DaemonClientImpl::SetServerId(uint64_t serverId)
 {
+    serverId_ = serverId;
+    clientStatusMtx_.lock();
+    clientStatus_ = REGISTERED;
+    clientStatusMtx_.unlock();
+}
+
+void DaemonClientImpl::SetClientStatus(ClientStatus status)
+{
+    clientStatusMtx_.lock();
+    clientStatus_ = status;
+    clientStatusMtx_.unlock();
+}
+
+void DaemonClientImpl::ClientStatusHandler()
+{
+    while (true)
+    {
+        clientStatusMtx_.lock();
+        ClientStatus status = clientStatus_;
+        clientStatusMtx_.unlock();
+        if (NO_SERVER == status)
+        {
+            ClientRegisterRequest req;
+            req.set_listening_port(listeningPort_);
+            req.set_proc_name(procName_);
+            req.set_group_id(groupId_);
+            ClientRegister(req);
+        }
+        else
+        {
+            HeartBeatRequest req;
+            req.set_server_id(serverId_);
+            HeartBeat(req);
+        }
+        sleep(10);
+    }
+}
+
+void ClientRegisterAsyncCall::OnGetResponse(void* ptr)
+{
+    DaemonClientImpl& client = *((DaemonClientImpl*)ptr);
+    if (common::SUCCESS == reply.err())
+    {
+        client.SetServerId(reply.server_id());
+    }
+}
+
+void HeartBeatAsyncCall::OnGetResponse(void* ptr)
+{
+    DaemonClientImpl& client = *((DaemonClientImpl*)ptr);
+    if (common::ERR == reply.err())
+    {
+        client.SetClientStatus(NO_SERVER);
+    }
 }
 
 }; // namespace daemon_client
