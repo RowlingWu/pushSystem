@@ -5,12 +5,12 @@ package daemon_server;
 service DaemonServer
 {
     rpc ClientRegister (ClientRegisterRequest) returns (ClientRegisterReply) {}
-    rpc Test (TestRequest) returns (TestReply) {}
+    rpc HeartBeat (HeartBeatRequest) returns (HeartBeatReply) {}
 }
 
 message ClientRegisterRequest
 {
-    string address = 1; // IP and port
+    string listening_port = 1;
     string proc_name = 2;
     uint32 group_id = 3;
 }
@@ -18,14 +18,15 @@ message ClientRegisterRequest
 message ClientRegisterReply
 {
     int32 err = 1;
+    uint64 server_id = 2;
 }
 
-message TestRequest
+message HeartBeatRequest
 {
-    string content = 1;
+    uint64 server_id = 1;
 }
 
-message TestReply
+message HeartBeatReply
 {
     int32 err = 1;
 }

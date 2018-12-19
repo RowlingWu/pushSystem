@@ -10,3 +10,6 @@ all: daemon_client
 
 daemon_client:
 	$(CXX) $(CXXFLAGS) *.cpp gen-cpp/*.cc $(LDFLAGS) -o $@
+
+clean:
+	rm daemon_client gen-cpp -rf

@@ -12,4 +12,4 @@ daemon_server:
 	$(CXX) $(CXXFLAGS) *.cpp gen-cpp/*.cc $(LDFLAGS) -o $@
 
 clean:
-	rm daemon_server
+	rm daemon_server gen-cpp -rf

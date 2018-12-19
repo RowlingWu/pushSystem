@@ -2,6 +2,7 @@
 #include <iostream>
 #include <string>
 #include <thread>
+#include <unistd.h>
 
 #include <grpcpp/grpcpp.h>
 #include <grpc/support/log.h>
@@ -18,19 +19,25 @@ using grpc::Status;
 namespace daemon_server
 {
 
-class ServerImpl final
+class ServerImpl
 {
 public:
-    ~ServerImpl();
+    virtual ~ServerImpl();
     void Run();
 
 private:
     void HandleRpcs();
+    void CheckProcAlive();
 
 private:
-    std::unique_ptr<ServerCompletionQueue> cq_;
+    unique_ptr<ServerCompletionQueue> cq_;
     DaemonServer::AsyncService service_;
-    std::unique_ptr<Server> server_;
+    unique_ptr<Server> server_;
+
+    thread checkProcAliveThread_;
+
+private:
+    static const double ALIVE_DURATION; // sec
 };
 
 };  // namespace daemon_server
