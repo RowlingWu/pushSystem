@@ -29,7 +29,10 @@ void ServerImpl::HandleRpcs()
 {
     new ClientRegisterCallData(&service_, cq_.get());
     new HeartBeatCallData(&service_, cq_.get());
+    new BeginPushCallData(&service_, cq_.get());
     checkProcAliveThread_ = thread(&ServerImpl::CheckProcAlive, this);
+
+    handleCallBackThread_ = thread(&common::AsyncCompleteRpc, this, &gCQ); // daemon will send req to servers(etc. producers), and should handle replies from these svrs
 
     void* tag;
     bool ok;
@@ -37,7 +40,7 @@ void ServerImpl::HandleRpcs()
     {
         GPR_ASSERT(cq_->Next(&tag, &ok));
         GPR_ASSERT(ok);
-        static_cast<CallData*>(tag)->Proceed();
+        static_cast<common::CallData*>(tag)->Proceed();
     }
 }
 

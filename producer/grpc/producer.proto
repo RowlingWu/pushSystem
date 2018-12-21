@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+package producer;
+
+service Producer
+{
+    rpc ProduceMsg (ProduceMsgRequest) returns (ProduceMsgReply) {}
+}
+
+message ProduceMsgRequest
+{
+    uint32 msg_id = 1;
+    uint64 start_uid = 2;
+    uint64 end_uid = 3;
+}
+
+message ProduceMsgReply
+{
+    int32 err = 1;
+}

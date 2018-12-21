@@ -2,11 +2,14 @@
 
 namespace daemon_server
 {
+
 map<uint64_t, ServerInfo> gSvrId2SvrInfo;
 mutex gSvrInfoMutex;
+CompletionQueue gCQ;
+ProducerCaller producerCaller(grpc::CreateChannel("localhost:50053", grpc::InsecureChannelCredentials()), &gCQ);
 
 ClientRegisterCallData::ClientRegisterCallData(DaemonServer::AsyncService* service, ServerCompletionQueue* cq) :
-    CallData(service, cq), responder_(&ctx_)
+    CallData(cq), service_(service), responder_(&ctx_)
 {
     Proceed();
 }
@@ -52,7 +55,7 @@ void ClientRegisterCallData::Proceed()
 }
 
 HeartBeatCallData::HeartBeatCallData(DaemonServer::AsyncService* service, ServerCompletionQueue* cq) :
-    CallData(service, cq), responder_(&ctx_)
+    CallData(cq), service_(service), responder_(&ctx_)
 {
     Proceed();
 }
@@ -100,6 +103,43 @@ void HeartBeatCallData::Proceed()
     }
 }
 
+BeginPushCallData::BeginPushCallData(DaemonServer::AsyncService* service, ServerCompletionQueue* cq) :
+    CallData(cq), service_(service), responder_(&ctx_)
+{
+    Proceed();
+}
+
+void BeginPushCallData::Proceed()
+{
+    if (status_ == CREATE)
+    {
+        status_ = PROCESS;
+        service_->RequestBeginPush(&ctx_, &request_, &responder_, cq_, cq_, this);
+    }
+    else if (status_ == PROCESS)
+    {
+        new BeginPushCallData(service_, cq_);
+
+        cout << "get beginPush call\n";
+
+        // TODO: rebalance policy
+        // TODO: call producer
+        ProduceMsgRequest req;
+        req.set_msg_id(123);
+        req.set_start_uid(request_.start_uid());
+        req.set_end_uid(request_.end_uid());
+        producerCaller.ProduceMsg(req);
+
+        status_ = FINISH;
+        responder_.Finish(reply_, Status::OK, this);
+    }
+    else
+    {
+        GPR_ASSERT(status_ == FINISH);
+        delete this;
+    }
+}
+
 string parseAndGetIp(const string& peer)
 {
     vector<string> result;
@@ -109,6 +149,27 @@ string parseAndGetIp(const string& peer)
         return result[1];
     }
     return "";
+}
+
+ProducerCaller::ProducerCaller(shared_ptr<Channel> channel, CompletionQueue* cq) :
+    stub_(Producer::NewStub(channel)),
+    cq_(cq)
+{
+}
+
+void ProducerCaller::ProduceMsg(ProduceMsgRequest& req)
+{
+    ProduceMsgAsyncCall* call = new ProduceMsgAsyncCall;
+    call->response_reader = stub_->PrepareAsyncProduceMsg(&call->context, req, cq_);
+    call->response_reader->StartCall();
+    call->response_reader->Finish(&call->reply, &call->status, (void*)call);
+}
+
+void ProduceMsgAsyncCall::OnGetResponse(void* ptr)
+{
+    ServerImpl& daemonServer = *((ServerImpl*)ptr);
+
+    cout << "produce msg reply: err:" << reply.err() << endl;
 }
 
 }; //namespace daemon_server

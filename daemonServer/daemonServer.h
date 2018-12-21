@@ -35,6 +35,7 @@ private:
     unique_ptr<Server> server_;
 
     thread checkProcAliveThread_;
+    thread handleCallBackThread_;
 
 private:
     static const double ALIVE_DURATION; // sec

@@ -13,7 +13,10 @@
 #include <boost/algorithm/string.hpp>
 
 #include "gen-cpp/daemonServer.grpc.pb.h"
+#include "gen-cpp/producer.grpc.pb.h"
 #include "../common/errCode.h"
+#include "../common/handler_interface.h"
+#include "../common/daemonClient/daemonClient.h"
 
 using grpc::Server;
 using grpc::ServerAsyncResponseWriter;
@@ -22,9 +25,11 @@ using grpc::ServerContext;
 using grpc::ServerCompletionQueue;
 using grpc::Status;
 using namespace std;
+using namespace producer;
 
 namespace daemon_server
 {
+class ServerImpl;
 
 struct ServerInfo
 {
@@ -38,47 +43,68 @@ struct ServerInfo
 extern map<uint64_t, ServerInfo> gSvrId2SvrInfo;
 extern mutex gSvrInfoMutex;
 
-class CallData
-{
-public:
-    CallData(DaemonServer::AsyncService* service, ServerCompletionQueue* cq) :
-        service_(service), cq_(cq), status_(CREATE)
-    {}
-    virtual void Proceed() = 0;
+extern CompletionQueue gCQ;
 
-protected:
-    enum CallStatus { CREATE, PROCESS, FINISH };
+class ProducerCaller;
+extern ProducerCaller producerCaller;
 
-protected:
-    DaemonServer::AsyncService* service_;
-    ServerCompletionQueue* cq_;
-    ServerContext ctx_;
-    CallStatus status_;
-};
-
-class ClientRegisterCallData : public CallData
+class ClientRegisterCallData : public common::CallData
 {
 public:
     ClientRegisterCallData(DaemonServer::AsyncService* service, ServerCompletionQueue* cq);
     void Proceed();
 
 private:
+    DaemonServer::AsyncService* service_;
     ClientRegisterRequest request_;
     ClientRegisterReply reply_;
     ServerAsyncResponseWriter<ClientRegisterReply> responder_;
 };
 
-class HeartBeatCallData : public CallData
+class HeartBeatCallData : public common::CallData
 {
 public:
     HeartBeatCallData(DaemonServer::AsyncService* service, ServerCompletionQueue* cq);
     void Proceed();
 
 private:
+    DaemonServer::AsyncService* service_;
     HeartBeatRequest request_;
     HeartBeatReply reply_;
     ServerAsyncResponseWriter<HeartBeatReply> responder_;
 };
+
+class BeginPushCallData : public common::CallData
+{
+public:
+    BeginPushCallData(DaemonServer::AsyncService* service, ServerCompletionQueue* cq);
+    void Proceed();
+
+private:
+    DaemonServer::AsyncService* service_;
+    BeginPushRequest request_;
+    BeginPushReply reply_;
+    ServerAsyncResponseWriter<BeginPushReply> responder_;
+};
+
+class ProducerCaller
+{
+public:
+    explicit ProducerCaller(shared_ptr<Channel> channel, CompletionQueue* cq);
+    void ProduceMsg(ProduceMsgRequest& req);
+
+private:
+    unique_ptr<Producer::Stub> stub_;
+    CompletionQueue* cq_;
+};
+
+struct ProduceMsgAsyncCall : public daemon_client::AsyncCall
+{
+    ProduceMsgReply reply;
+    unique_ptr<ClientAsyncResponseReader<ProduceMsgReply>> response_reader;
+    void OnGetResponse(void*);
+};
+
 
 string parseAndGetIp(const string& peer);
 

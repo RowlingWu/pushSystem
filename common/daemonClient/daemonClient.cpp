@@ -74,6 +74,7 @@ void DaemonClientImpl::ClientStatusHandler()
         clientStatusMtx_.unlock();
         if (NO_SERVER == status)
         {
+            cout << "sending register msg\n";
             ClientRegisterRequest req;
             req.set_listening_port(listeningPort_);
             req.set_proc_name(procName_);
@@ -82,6 +83,7 @@ void DaemonClientImpl::ClientStatusHandler()
         }
         else
         {
+            cout << "sending heartB msg\n";
             HeartBeatRequest req;
             req.set_server_id(serverId_);
             HeartBeat(req);

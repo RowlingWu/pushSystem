@@ -6,6 +6,7 @@ service DaemonServer
 {
     rpc ClientRegister (ClientRegisterRequest) returns (ClientRegisterReply) {}
     rpc HeartBeat (HeartBeatRequest) returns (HeartBeatReply) {}
+    rpc BeginPush (BeginPushRequest) returns (BeginPushReply) {}
 }
 
 message ClientRegisterRequest
@@ -27,6 +28,18 @@ message HeartBeatRequest
 }
 
 message HeartBeatReply
+{
+    int32 err = 1;
+}
+
+message BeginPushRequest
+{
+    uint32 msg_id = 1;
+    uint64 start_uid = 2;
+    uint64 end_uid = 3;
+}
+
+message BeginPushReply
 {
     int32 err = 1;
 }

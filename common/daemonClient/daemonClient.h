@@ -1,3 +1,6 @@
+#ifndef COMMON_DAEMON_CLIENT
+#define COMMON_DAEMON_CLIENT
+
 #include <iostream>
 #include <memory>
 #include <string>
@@ -73,3 +76,5 @@ private:
 };
 
 }; // namespace daemon_client
+
+#endif
