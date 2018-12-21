@@ -10,8 +10,8 @@ int main()
 
     BeginPushRequest req;
     req.set_msg_id(123456);
-    req.set_start_uid(10000);
-    req.set_end_uid(99999);
+    req.set_start_uid(90000);
+    req.set_end_uid(90010);
     client.BeginPush(req);
 
     thread thread_ = thread(&common::AsyncCompleteRpc, &client, &cq);

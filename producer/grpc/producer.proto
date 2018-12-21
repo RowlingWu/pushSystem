@@ -18,3 +18,9 @@ message ProduceMsgReply
 {
     int32 err = 1;
 }
+
+message ProducerMsg
+{
+    uint64 to_uid = 1;
+    uint32 msg_id = 2;
+}

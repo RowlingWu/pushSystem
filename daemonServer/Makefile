@@ -1,4 +1,4 @@
-CXX = g++ -I/home/l/grpc/include
+CXX = g++ -I/home/l/grpc/include -I.
 CPPFLAGS += `pkg-config --cflags protobuf grpc`
 CXXFLAGS += -std=c++11
 LDFLAGS += -L/usr/local/lib -L/home/l/grpc/libs/opt \
