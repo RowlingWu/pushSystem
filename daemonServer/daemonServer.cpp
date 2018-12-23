@@ -48,14 +48,13 @@ void ServerImpl::CheckProcAlive()
 {
     while (true)
     {
-        cout << __func__ << endl;
         time_t now = time(NULL);
         gSvrInfoMutex.lock();
 
         for (auto it = gSvrId2SvrInfo.begin();
                 it != gSvrId2SvrInfo.end();)
         {
-            cout << "svrId:" << it->first
+            cout << "[" << __func__ << "]svrId:" << it->first
                 << " addr:" << it->second.address
                 << " procName:" << it->second.procName
                 << " grpId:" << it->second.groupId

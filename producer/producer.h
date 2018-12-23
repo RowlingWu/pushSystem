@@ -19,7 +19,7 @@ class ProduceMsgCallData : public common::CallData
 public:
     ProduceMsgCallData(Producer::AsyncService* service, ServerCompletionQueue* cq);
     void Proceed();
-    void FinishProceed(ProduceMsgReply& reply);
+    void NotifyOne();
 
 private:
     int32_t ProduceMsg(uint32_t msgId, uint64_t startUid, uint64_t endUid);
@@ -29,6 +29,8 @@ private:
     ProduceMsgRequest request_;
     ProduceMsgReply reply_;
     ServerAsyncResponseWriter<ProduceMsgReply> responder_;
+    uint32_t waitForSendCount;
+    mutex waitForSndCntMtx;
 };
 
 
@@ -36,7 +38,7 @@ extern TpsReportService gTps;
 extern RocketmqSendAndConsumerArgs gMQInfo;
 extern DefaultMQProducer gMQProducer;
 
-class ProducerSendCallBack : public SendCallback
+class ProducerSendCallBack : public AutoDeleteSendCallBack
 {
     virtual void onSuccess(SendResult& result);
     virtual void onException(MQException& e);

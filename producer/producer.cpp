@@ -64,15 +64,22 @@ void ProduceMsgCallData::Proceed()
     }
 }
 
-void ProduceMsgCallData::FinishProceed(ProduceMsgReply& reply)
+void ProduceMsgCallData::NotifyOne()
 {
-    reply_.CopyFrom(reply);
-    status_ = FINISH;
-    responder_.Finish(reply_, Status::OK, this);
+    waitForSndCntMtx.lock();
+    --waitForSendCount;
+    if (0 == waitForSendCount)
+    {
+        status_ = FINISH;
+        reply_.set_err(common::SUCCESS);
+        responder_.Finish(reply_, Status::OK, this);
+    }
+    waitForSndCntMtx.unlock();
 }
 
 int32_t ProduceMsgCallData::ProduceMsg(uint32_t msgId, uint64_t startUid, uint64_t endUid)
 {
+    waitForSendCount = endUid - startUid + 1;
     for (uint64_t uid = startUid; uid <= endUid; ++uid)
     {
         // TODO: read SSDB for user info
@@ -93,16 +100,12 @@ void ProducerSendCallBack::onSuccess(SendResult& result)
     cout << "SendToBrokerSuccess.";
     PrintResult(&result);
 
-    ProduceMsgReply reply;
-    reply.set_err(common::SUCCESS);
-    callData->FinishProceed(reply);
-    delete this;
+    callData->NotifyOne();
 }
 
 void ProducerSendCallBack::onException(MQException& e)
 {
     cout << "SendToBrokerException: " << e.what() << endl;
-    delete this;
 }
 
 void AsyncProducerWorker(string& topic, string& body, ProduceMsgCallData* callData)
@@ -116,9 +119,8 @@ void AsyncProducerWorker(string& topic, string& body, ProduceMsgCallData* callDa
     }
     catch (MQException& e)
     {
-        ProduceMsgReply reply;
-        reply.set_err(common::ERR);
-        callData->FinishProceed(reply);
+        cout << __func__ << " exception:" << e.what() << ".Retry sending..." << endl;
+        AsyncProducerWorker(topic, body, callData);
     }
 }
 

@@ -84,13 +84,6 @@ void HeartBeatCallData::Proceed()
             it->second.timestamp = time(NULL);
         }
 
-        cout << __func__
-            << "::svrId:" << request_.server_id()
-            << " heartBeatTime:"
-            << ctime(&it->second.timestamp)
-            << " addr:" << it->second.address
-            << " procName:" << it->second.procName
-            << endl;
         gSvrInfoMutex.unlock();
 
         status_ = FINISH;
@@ -125,7 +118,7 @@ void BeginPushCallData::Proceed()
         // TODO: rebalance policy
         // TODO: call producer
         ProduceMsgRequest req;
-        req.set_msg_id(123);
+        req.set_msg_id(request_.msg_id());
         req.set_start_uid(request_.start_uid());
         req.set_end_uid(request_.end_uid());
         producerCaller.ProduceMsg(req);
