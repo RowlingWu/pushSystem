@@ -11,7 +11,7 @@ SRC = ../common/*.cpp \
 all: consumer
 
 consumer:
-	$(CXX) $(CXXFLAGS) $(SRC) $(LDFLAGS) -o $@ -ggdb
+	$(CXX) $(CXXFLAGS) $(SRC) $(LDFLAGS) -o $@
 
 clean:
 	rm consumer gen-cpp -rf

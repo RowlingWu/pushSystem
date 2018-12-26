@@ -72,7 +72,8 @@ private:
 
 extern RedisHandler redisHandler;
 extern mutex redisMtx;
-const string TMP_USER_INFO_KEY;
+extern const string TMP_USER_INFO_KEY;
+extern const int BITS_PER_BYTE;
 
 }; // namespace producer
 

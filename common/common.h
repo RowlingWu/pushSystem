@@ -1,22 +1,15 @@
 #ifndef COMMON_COMMON
 #define COMMON_COMMON
 
-const char* USER_INFO_KEY = {
-    "OFFICIAL_FANS_",
-    "MONTH_ACTIVE_USER_",
-    "PUSH_SWITCH_OPENED_"
-};
+#include <iostream>
+#include <string>
+#include <stdint.h>
+using namespace std;
 
-const uint32_t SECONDS_PER_MINUTE = 60;
+extern const char* USER_INFO_KEY[];
+extern const uint32_t SECONDS_PER_MINUTE;
 
-string genReleaseKey(const char* c)
-{
-    return string(c) + "RELEASE";
-}
-
-string genTempKey(const char* c)
-{
-    return string(c) + "TEMP";
-}
+extern string genReleaseKey(const char* c);
+extern string genTempKey(const char* c);
 
 #endif

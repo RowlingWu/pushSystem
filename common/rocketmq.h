@@ -63,7 +63,7 @@ class RocketmqSendAndConsumerArgs {
 
 class TpsReportService {
  public:
-  TpsReportService() : tps_interval_(1), quit_flag_(false), tps_count_(0) {}
+  TpsReportService() : tps_interval_(10), quit_flag_(false), tps_count_(0) {}
   void start() {
     tps_thread_.reset(
         new boost::thread(boost::bind(&TpsReportService::TpsReport, this)));

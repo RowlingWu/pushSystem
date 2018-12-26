@@ -3,13 +3,12 @@ CXX = g++ -I/home/l/grpc/include -I. -I/usr/local/include/rocketmq \
 CPPFLAGS += `pkg-config --cflags protobuf grpc`
 CXXFLAGS += -std=c++11
 LDFLAGS += -L/usr/local/lib -L/home/l/grpc/libs/opt -L/usr/local/lib\
-		   -L/home/l/hiredis \
 		  `pkg-config --libs protobuf grpc++ grpc` \
 		  -Wl,--no-as-needed -lgrpc++_reflection -Wl,--as-needed\
-		  -ldl -lrocketmq -lboost_system -lboost_thread -lpthread \
-		  -llibhiredis
+		  -ldl -lrocketmq -lboost_system -lboost_thread -lpthread
 SRC = ../common/daemonClient/*.cpp ../common/*.cpp \
-	  *.cpp gen-cpp/*.cc
+	  *.cpp gen-cpp/*.cc \
+	  /home/l/hiredis/libhiredis.a
 
 all: producer
 
