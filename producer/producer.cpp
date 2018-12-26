@@ -2,7 +2,6 @@
 
 namespace daemon_client
 {
-using namespace producer;
 
 template<>
 void ServerImpl<producer::Producer>::HandleRpcs()
@@ -28,6 +27,9 @@ namespace producer
 TpsReportService gTps;
 RocketmqSendAndConsumerArgs gMQInfo;
 DefaultMQProducer gMQProducer("rename_group_name");
+RedisHandler redisHandler;
+mutex redisMtx;
+const string TMP_USER_INFO_KEY = "TMP_USER_INFO_KEY";
 
 ProduceMsgCallData::ProduceMsgCallData(Producer::AsyncService* service, ServerCompletionQueue* cq) :
     CallData(cq), service_(service), responder_(&ctx_)
@@ -79,6 +81,52 @@ void ProduceMsgCallData::NotifyOne()
 
 int32_t ProduceMsgCallData::ProduceMsg(uint32_t msgId, uint64_t startUid, uint64_t endUid)
 {
+    redisMtx.lock();
+    // Check KEY exists
+    string cmd = "EXISTS " + TMP_USER_INFO_KEY;
+    const redisReply* redisReply = redisHandler.command(cmd.c_str());
+    if (NULL == redisReply)
+    {
+        redisMtx.unlock();
+        return common::ERR;
+    }
+    if (!redisReply->integer) // KEY not exists
+    {
+        // TODO: create KEY
+        cmd = "BITOP AND " + TMP_USER_INFO_KEY
+            + " " + genReleaseKey(USER_INFO_KEY[0])
+            + " " + genReleaseKey(USER_INFO_KEY[1])
+            + " " + genReleaseKey(USER_INFO_KEY[2]);
+        redisReply = redisHandler.command(cmd.c_str());
+        if (NULL == redisReply ||
+                redisReply->integer <= 0)
+        {
+            redisMtx.unlock();
+            cout << "RedisErr:" << (NULL == redisReply
+                    ? "redisReplyNULL." : "")
+                << TMP_USER_INFO_KEY
+                << " length is 0!\n";
+            return common::ERR;
+        }
+        ostringstream sscmd;
+        sscmd << "EXPIRE " << TMP_USER_INFO_KEY << " "
+            << 60 * SECONDS_PER_MINUTE;
+        redisReply = redisHandler.command(sscmd.str().c_str());
+        if (NULL == redisReply || !redisReply->integer)
+        {
+            redisMtx.unlock();
+            cout << "RedisErr:" << (NULL == redisReply
+                    ? "redisReplyNULL." : "")
+                << "fail to set key expiration\n";
+            return common::ERR;
+        }
+    }
+    // Get start-end range of the KEY
+    // Generate vector<to_uids>
+    // Producer sends
+    redisHandler.freeReply();
+    redisMtx.unlock();
+
     waitForSendCount = endUid - startUid + 1;
     for (uint64_t uid = startUid; uid <= endUid; ++uid)
     {
@@ -137,5 +185,96 @@ void InitProducer()
     gMQProducer.start();
     gTps.start();
 }
+
+
+RedisHandler::RedisHandler() :
+    context(NULL), reply(NULL)
+{
+    connect();
+}
+
+RedisHandler::~RedisHandler()
+{
+    freeConnection();
+}
+
+bool RedisHandler::connect()
+{
+    if (NULL != context)
+    {
+        return true;
+    }
+
+    for (uint32_t i = 0; i < 3; ++i)
+    {
+        context = redisConnect("127.0.0.1", 6379);
+        if (c == NULL || c->err)
+        {
+            if (c)
+            {
+                cout << "RedisConnectionErr:"
+                    << c->errstr << endl;
+                redisFree(context);
+            }
+            else
+            {
+                cout << "RedisConnectionErr:"
+                    << "can't allocate redis context\n";
+            }
+            cout << "Retry connecting for "
+                << i + 1 << " time\n";
+        }
+        else
+        {
+            cout << "RedisConnectionSuccess.\n";
+            return true;
+        }
+    }
+    cout << "Give up redis connection\n";
+    return false;
+}
+
+const redisReply* RedisHandler::command(const char* const cmd)
+{
+    if (NULL == context && !connect())
+    {
+        return NULL;
+    }
+    for (uint32_t i = 0; i < 3; ++i)
+    {
+        reply = (redisReply*)redisCommand(context, cmd);
+        if (NULL == reply)
+        {
+            cout << "RedisCommandErr:" << context->err
+                << " desc:" << context->errstr
+                << ". Retry for the " << i + 1 << "time\n";
+        }
+        else
+        {
+            return reply;
+        }
+    }
+    cout << "RedisCommandErr:give up the command!\n";
+    return NULL;
+}
+
+void RedisHandler::freeConnection()
+{
+    if (context != NULL)
+    {
+        redisFree(context);
+    }
+}
+
+void RedisHandler::freeReply()
+{
+    if (reply != NULL)
+    {
+        freeReplyObject(reply);
+    }
+}
+
+RedisHandler redisHandler;
+mutex redisMtx;
 
 }; // namespace producer

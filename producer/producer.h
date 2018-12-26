@@ -6,7 +6,10 @@
 #include "../common/handler_interface.h"
 #include "../common/errCode.h"
 #include "../common/rocketmq.h"
+#include "../common/common.h"
 #include "gen-cpp/producer.grpc.pb.h"
+
+#include "hiredis.h"
 
 using namespace daemon_client;
 using namespace rocketmq;
@@ -50,6 +53,26 @@ private:
 
 void InitProducer();
 void AsyncProducerWorker(string& topic, string& body, ProduceMsgCallData* callData);
+
+
+class RedisHandler
+{
+public:
+    RedisHandler();
+    ~RedisHandler();
+    bool connect();
+    const redisReply* command(const char* const cmd);
+    void freeConnection();
+    void freeReply();
+
+private:
+    redisContext* context;
+    redisReply* reply;
+};
+
+extern RedisHandler redisHandler;
+extern mutex redisMtx;
+const string TMP_USER_INFO_KEY;
 
 }; // namespace producer
 
