@@ -7,7 +7,7 @@ LDFLAGS += -L/usr/local/lib -L/home/l/grpc/libs/opt -L/usr/local/lib\
 		  -Wl,--no-as-needed -lgrpc++_reflection -Wl,--as-needed\
 		  -ldl -lrocketmq -lboost_system -lboost_thread -lpthread
 SRC = ../common/daemonClient/*.cpp ../common/*.cpp \
-	  *.cpp gen-cpp/*.cc \
+	  *.cpp gen-cpp/*.cc ../common/dataHandler/redisHandler.cpp \
 	  /home/l/hiredis/libhiredis.a
 
 all: producer

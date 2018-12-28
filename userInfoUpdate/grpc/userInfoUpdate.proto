@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package user_info_update;
+
+service UserInfoUpdate
+{
+    rpc UpdateUserInfo (UpdateUserInfoRequest) returns (UpdateUserInfoReply) {}
+}
+
+message UpdateUserInfoRequest
+{
+}
+
+message UpdateUserInfoReply
+{
+}
