@@ -13,6 +13,7 @@ public:
     ~RedisHandler();
     bool connect();
     const redisReply* command(const char* const cmd);
+    const redisReply* command(const char* const cmd, const char* const value, size_t size);
     void freeConnection();
     void freeReply();
 

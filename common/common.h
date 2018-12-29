@@ -11,5 +11,6 @@ extern const uint32_t SECONDS_PER_MINUTE;
 
 extern string genReleaseKey(const char* c);
 extern string genTempKey(const char* c);
+extern string genDiffKey(const char* c);
 
 #endif

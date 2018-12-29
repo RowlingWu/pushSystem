@@ -24,8 +24,14 @@ using namespace std;
 namespace user_info_update
 {
 
+extern vector<string> tableNames;
+extern const uint32_t COUNTS_PER_LOOP;
+extern const uint64_t END_UID;
+extern const uint32_t DIFF_PERCENTAGE;
+
 extern void CheckAndUpdateUserInfo(const int32_t tag);
 extern void UpdateUserInfo(const int32_t tag);
+extern string GenSQL(const int32_t tag, const int64_t lastUid);
 
 };  // namespace user_info_update
 

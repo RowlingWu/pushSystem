@@ -82,3 +82,7 @@ void MysqlHandler::freeResult()
     }
 }
 
+const MYSQL* MysqlHandler::get()
+{
+    return connection;
+}

@@ -11,6 +11,7 @@ class MysqlHandler
 public:
     MysqlHandler();
     ~MysqlHandler();
+    const MYSQL* get();
     bool connect();
     void freeConnection();
     const MYSQL_RES* command(const char* const cmd);

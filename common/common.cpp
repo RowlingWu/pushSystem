@@ -8,14 +8,17 @@ const char* USER_INFO_KEY[] = {
 
 const uint32_t SECONDS_PER_MINUTE = 60;
 
-extern string genReleaseKey(const char* c)
+string genReleaseKey(const char* c)
 {
     return string(c) + "RELEASE";
 }
 
-extern string genTempKey(const char* c)
+string genTempKey(const char* c)
 {
     return string(c) + "TEMP";
 }
 
-
+string genDiffKey(const char* c)
+{
+    return string(c) + "DIFF";
+}

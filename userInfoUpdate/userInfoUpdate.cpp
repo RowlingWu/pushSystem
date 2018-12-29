@@ -1,5 +1,14 @@
 #include "userInfoUpdate.h"
 
+const uint32_t COUNTS_PER_LOOP = 10240;
+const uint64_t END_UID = 200000000;
+const uint32_t DIFF_PERCENTAGE = 1;
+vector<string> tableNames = {
+    "official_fans",
+    "month_active_users",
+    "push_switch"
+};
+
 void CheckAndUpdateUserInfo(const int32_t tag)
 {
     ostringstream cmd;
@@ -27,15 +36,186 @@ void CheckAndUpdateUserInfo(const int32_t tag)
 
 void UpdateUserInfo(const int32_t tag)
 {
-    cout << "Begin update " << USER_INFO_KEY[i] << endl;
+    cout << "Begin updating " << USER_INFO_KEY[tag]
+        << endl;
 
-    // read mysql for 1024 users per time
-    // write to Redis using TEMP_KEY
-    // finish while loop
-    // check diff between RELEASE_KEY and TEMP_KEY
-    // if ok, rename KEY
-    // write last_update_time to mysql 
+    string cmd = "DEL " + genTempKey(USER_INFO_KEY[tag]);
+    if (!redisHandler.command(cmd.c_str()))
+    {
+        cout << "Stop update " << USER_INFO_KEY[tag]
+            << endl;
+        return;
+    }
+    redisHandler.freeReply();
+
+    for (uint64_t uid = 0; uid <= END_UID;
+            uid += COUNTS_PER_LOOP,
+            mysqlHandler.freeResult())
+    {
+        // Read user infos (uids) from MySQL,
+        // the number of uids is no more than
+        // COUNTS_PER_LOOP in every for-loop
+        MYSQL_RES* res = mysqlHandler.command(GenSQL(tag, uid).c_str());
+        if (NULL == res)
+        {
+            cout << "Stop updating "
+                << USER_INFO_KEY[tag] << endl;
+            return;
+        }
+        if (mysql_num_rows(res) <=  0)
+        {
+            continue;
+        }
+
+        // Convert uids into bitmap (the data structure
+        // in Redis).
+        // The offset of a bit represents the uid.
+        // If the bit in the bitmap is set to 1,
+        // the corresponding uid record exists in MySQL.
+        // For example, bits[offset] = 1, means that
+        // there exists a record uid = offset in MySQL.
+        // Here we use std::string to store the
+        // generated (sub)bitmap
+        string bitmap(COUNTS_PER_LOOP / 8, 0);
+        MYSQL_ROW row;
+        while ((row = mysql_fetch_row(res)) > 0)
+        {
+            const uint64_t offset = (uint64_t)row[0] - uid;
+            bitmap[offset / 8] |= (1 << (7 - offset % 8));
+        }
+
+        // Writes this (sub)bitmap to Redis, using a 
+        // corresponding TEMP_KEY
+        ostringstream sscmd;
+        sscmd <<  "SETRANGE "
+            << genTempKey(USER_INFO_KEY[tag]) << " "
+            << uid / 8 << " "  // offset
+            << bitmap;         // value
+        if (redisHandler.command(sscmd.str().c_str())
+                == NULL)
+        {
+            cout << "Stop updating "
+                << USER_INFO_KEY[tag] << endl;
+            return;
+        }
+        redisHandler.freeReply();
+    }
+
+    // Check whether RELEASE_KEY exists
+    bool ok = false;
+    cmd = "EXISTS " + genReleaseKey(USER_INFO_KEY[tag]);
+    redisReply* redisRes = redisHandler.command(cmd.c_str());
+    if (NULL == redisRes)
+    {
+        cout << "Stop update " << USER_INFO_KEY[tag]
+            << endl;
+        return;
+    }
+    int isReleaseKeyExists = redisRes->integer;
+    redisHandler.freeReply();
+    if (!isReleaseKeyExists) // RELEASE_KEY not exists
+    {
+        cout << genReleaseKey(USER_INFO_KEY[tag])
+            << " not exists, directly generate it\n";
+        ok = true;
+    }
+    else
+    {
+        // Generate DIFF_KEY
+        cout << "Checking diff between "
+            << genReleaseKey(USER_INFO_KEY[tag])
+            << " and " << genTempKey(USER_INFO_KEY[tag])
+            << endl;
+        cmd = "BITOP XOR "
+            + genDiffKey(USER_INFO_KEY[tag]) + " "
+            + genReleaseKey(USER_INFO_KEY[tag]) + " "
+            + genTempKey(USER_INFO_KEY[tag]);
+        if (redisHandler.command(cmd.c_str()) == NULL)
+        {
+            cout << "Stop update " << USER_INFO_KEY[tag]
+                << endl;
+            return;
+        }
+        redisHandler.freeReply();
+
+        // check diff between RELEASE_KEY and TEMP_KEY
+        cmd = "BITCOUNT "
+            + genDiffKey(USER_INFO_KEY[tag]);
+        redisRes = redisHandler.command(cmd.c_str());
+        if (NULL == redisRes)
+        {
+            cout << "Stop update " << USER_INFO_KEY[tag]
+                << endl;
+            return;
+        }
+        uint32_t bitcounts = redisRes->integer;
+        redisHandler.freeReply();
+        uint32_t diff = bitcounts * 1000
+            / (double)END_UID;
+        cout << "Diff count:" << bitcounts
+            << ". Diff percentage:" << diff << endl;
+        if (diff < DIFF_PERCENTAGE)
+        {
+            ok = true;
+        }
+
+        // Del DIFF_KEY
+        cmd = "DEL " + genDiffKey(USER_INFO_KEY[tag]);
+        redisHandler.command(cmd.c_str());
+        redisHandler.freeReply();
+    }
+    cout << (ok ? "Accept" : "Reject")
+        << " to rename TEMP_KEY to RELEASE_KEY\n";
+    // If ok, rename KEY
+    if (ok)
+    {
+        cmd = "RENAME " + genTempKey(USER_INFO_KEY[tag])
+            + " " + genReleaseKey(USER_INFO_KEY[tag]);
+        if (redisHandler.command(cmd.c_str()) == NULL)
+        {
+            cout << "Stop update " << USER_INFO_KEY[tag]
+                << endl;
+            return;
+        }
+        redisHandler.freeReply();
+    }
+    // Write last_update_time to mysql 
+    ostringstream sscmd;
+    time_t now = time(NULL);
+    sscmd << "UPDATE user_info_update_record SET "
+        << "last_update_time = " << (uint64_t)now
+        << " WHERE type = " << tag;
+    if (!mysqlHandler.command(sscmd.str().c_str()))
+    {
+        cout << "Stop update " << USER_INFO_KEY[tag]
+            << endl;
+        return;
+    }
+    uint32_t affectedRows = mysql_affected_rows(mysqlHandler.get());
+    mysqlHandler.freeReply();
+    if (0 == affectedRows)
+    {
+        ostringstream sscmd;
+        sscmd << "INSERT INTO user_info_update_record"
+            << "(type, last_update_time) VALUES("
+            << tag << "," << (uint64_t)now << ")";
+        if (!mysqlHandler.command(sscmd.str().c_str()))
+        {
+            cout << "Stop update " << USER_INFO_KEY[tag]
+                << endl;
+            return;
+        }
+    }
+    cout << "Finish updating " << USER_INFO_KEY[tag]
+        << endl;
 }
 
+string GenSQL(const int32_t tag, const int64_t beginUid)
+{
+    ostringstream cmd; cmd << "SELECT uid FROM " << tableNames[tag] << " WHERE uid >= " << beginUid << " AND uid < " << beginUid + COUNTS_PER_LOOP; if (2 == tag) {
+        cmd << " AND opened = 1";
+    }
+    return cmd.str();
+}
 
 }; // namespace user_info_update
