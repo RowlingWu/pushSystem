@@ -55,6 +55,8 @@ const redisReply* RedisHandler::command(const char* const cmd)
 {
     if (NULL == context && !connect())
     {
+        cout << "While executing cmd`" << cmd << "`"
+            << ", connection fail!\n";
         return NULL;
     }
     for (uint32_t i = 0; i < 3; ++i)
@@ -80,6 +82,8 @@ const redisReply* RedisHandler::command(const char* const cmd, const char* const
 {
     if (NULL == context && !connect())
     {
+        cout << "While executing cmd`" << cmd << "`"
+            << ", connection fail!\n";
         return NULL;
     }
     for (uint32_t i = 0; i < 3; ++i)
@@ -91,6 +95,19 @@ const redisReply* RedisHandler::command(const char* const cmd, const char* const
                 << "` err:" << context->err
                 << " desc:" << context->errstr
                 << ". Retry for the " << i + 1 << "time\n";
+            freeConnection();
+            connect();
+        }
+        else if (reply->type == REDIS_REPLY_ERROR)
+        {
+            cout << "CMD:" << cmd 
+                << ". REDIS_REPLY_ERROR:" << reply->str
+                << endl;
+        }
+        else if (reply->type == REDIS_REPLY_NIL)
+        {
+            cout << "CMD:" << cmd <<
+                ". No data to access\n";
         }
         else
         {
@@ -99,7 +116,6 @@ const redisReply* RedisHandler::command(const char* const cmd, const char* const
     }
     cout << "RedisCommandErr:give up the command!\n";
     return NULL;
-
 }
 
 void RedisHandler::freeConnection()

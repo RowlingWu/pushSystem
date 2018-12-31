@@ -1,5 +1,8 @@
 #include "userInfoUpdate.h"
 
+namespace user_info_update
+{
+    
 const uint32_t COUNTS_PER_LOOP = 10240;
 const uint64_t END_UID = 200000000;
 const uint32_t DIFF_PERCENTAGE = 1;
@@ -15,16 +18,23 @@ void CheckAndUpdateUserInfo(const int32_t tag)
     cmd << "SELECT last_update_time "
         << "FROM user_info_update_record "
         << "WHERE type = " << tag;
-    MYSQL_RES* res = mysqlHandler.command(cmd.str().c_str());
-    if (!res)
+    MYSQL_RES* res;
+    if (!mysqlHandler.command(cmd.str().c_str(), res))
     {
         return;
     }
-    if (mysql_num_rows(res) > 0)
+    MYSQL_ROW row = mysql_fetch_row(res);
+    if (row > 0)
     {
-        MYSQL_ROW row = mysql_fetch_row(res);
-        time_t timestamp = (time_t)row[0];
-        if (/* day is today*/)
+        stringstream ss;
+        ss << row[0];
+        uint64_t timestamp;
+        ss >> timestamp;
+        time_t now = time(NULL);
+        tm* tstm = localtime((time_t*)(&timestamp));
+        tm* nowtm = localtime(&now);
+        if (tstm->tm_mday == nowtm->tm_mday &&
+                tstm->tm_mon == nowtm->tm_mon)
         {
             mysqlHandler.freeResult();
             return;
@@ -55,16 +65,12 @@ void UpdateUserInfo(const int32_t tag)
         // Read user infos (uids) from MySQL,
         // the number of uids is no more than
         // COUNTS_PER_LOOP in every for-loop
-        MYSQL_RES* res = mysqlHandler.command(GenSQL(tag, uid).c_str());
-        if (NULL == res)
+        MYSQL_RES* res;
+        if (!mysqlHandler.command(GenSQL(tag, uid).c_str(), res))
         {
             cout << "Stop updating "
                 << USER_INFO_KEY[tag] << endl;
             return;
-        }
-        if (mysql_num_rows(res) <=  0)
-        {
-            continue;
         }
 
         // Convert uids into bitmap (the data structure
@@ -78,9 +84,18 @@ void UpdateUserInfo(const int32_t tag)
         // generated (sub)bitmap
         string bitmap(COUNTS_PER_LOOP / 8, 0);
         MYSQL_ROW row;
-        while ((row = mysql_fetch_row(res)) > 0)
+        while (true)
         {
-            const uint64_t offset = (uint64_t)row[0] - uid;
+            row = mysql_fetch_row(res);
+            if (row <= 0)
+            {
+                break;
+            }
+            stringstream ss;
+            uint64_t row2Uid;
+            ss << row[0];
+            ss >> row2Uid;
+            const uint64_t offset = row2Uid - uid;
             bitmap[offset / 8] |= (1 << (7 - offset % 8));
         }
 
@@ -89,10 +104,9 @@ void UpdateUserInfo(const int32_t tag)
         ostringstream sscmd;
         sscmd <<  "SETRANGE "
             << genTempKey(USER_INFO_KEY[tag]) << " "
-            << uid / 8 << " "  // offset
-            << bitmap;         // value
-        if (redisHandler.command(sscmd.str().c_str())
-                == NULL)
+            << uid / 8 << " %b";  // offset
+        if (!redisHandler.command(sscmd.str().c_str(),
+                bitmap.c_str(), COUNTS_PER_LOOP / 8))
         {
             cout << "Stop updating "
                 << USER_INFO_KEY[tag] << endl;
@@ -104,7 +118,7 @@ void UpdateUserInfo(const int32_t tag)
     // Check whether RELEASE_KEY exists
     bool ok = false;
     cmd = "EXISTS " + genReleaseKey(USER_INFO_KEY[tag]);
-    redisReply* redisRes = redisHandler.command(cmd.c_str());
+    const redisReply* redisRes = redisHandler.command(cmd.c_str());
     if (NULL == redisRes)
     {
         cout << "Stop update " << USER_INFO_KEY[tag]
@@ -185,26 +199,28 @@ void UpdateUserInfo(const int32_t tag)
     sscmd << "UPDATE user_info_update_record SET "
         << "last_update_time = " << (uint64_t)now
         << " WHERE type = " << tag;
-    if (!mysqlHandler.command(sscmd.str().c_str()))
+    MYSQL_RES* res;
+    if (!mysqlHandler.command(sscmd.str().c_str(), res))
     {
         cout << "Stop update " << USER_INFO_KEY[tag]
             << endl;
         return;
     }
-    uint32_t affectedRows = mysql_affected_rows(mysqlHandler.get());
-    mysqlHandler.freeReply();
-    if (0 == affectedRows)
+    int32_t affectedRows = mysql_affected_rows(mysqlHandler.get());
+    mysqlHandler.freeResult();
+    if (affectedRows <= 0)
     {
         ostringstream sscmd;
         sscmd << "INSERT INTO user_info_update_record"
             << "(type, last_update_time) VALUES("
             << tag << "," << (uint64_t)now << ")";
-        if (!mysqlHandler.command(sscmd.str().c_str()))
+        if (!mysqlHandler.command(sscmd.str().c_str(), res))
         {
             cout << "Stop update " << USER_INFO_KEY[tag]
                 << endl;
             return;
         }
+        mysqlHandler.freeResult();
     }
     cout << "Finish updating " << USER_INFO_KEY[tag]
         << endl;
@@ -212,7 +228,12 @@ void UpdateUserInfo(const int32_t tag)
 
 string GenSQL(const int32_t tag, const int64_t beginUid)
 {
-    ostringstream cmd; cmd << "SELECT uid FROM " << tableNames[tag] << " WHERE uid >= " << beginUid << " AND uid < " << beginUid + COUNTS_PER_LOOP; if (2 == tag) {
+    ostringstream cmd;
+    cmd << "SELECT uid FROM " << tableNames[tag]
+        << " WHERE uid >= " << beginUid
+        << " AND uid < " << beginUid + COUNTS_PER_LOOP;
+    if (2 == tag)
+    {
         cmd << " AND opened = 1";
     }
     return cmd.str();

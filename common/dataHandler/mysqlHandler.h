@@ -11,10 +11,10 @@ class MysqlHandler
 public:
     MysqlHandler();
     ~MysqlHandler();
-    const MYSQL* get();
+    MYSQL* get();
     bool connect();
     void freeConnection();
-    const MYSQL_RES* command(const char* const cmd);
+    bool command(const char* const cmd, MYSQL_RES*& res);
     void freeResult();
 
 private:

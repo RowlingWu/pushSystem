@@ -23,7 +23,7 @@ bool MysqlHandler::connect()
             << mysql_error(connection) << endl;
         return false;
     }
-    connection = mysql_real_connection(connection, "localhost", "root", "Wo1bbbbzhul@", "user_info", 0, NULL, 0);
+    connection = mysql_real_connect(connection, "localhost", "root", "Wo1bbbbzhul@", "user_info", 0, NULL, 0);
     if (NULL == connection)
     {
         cout << "mysql_real_connection err:"
@@ -49,7 +49,9 @@ void MysqlHandler::freeConnection()
     }
 }
 
-const MYSQL_RES* MysqlHandler::command(const char* const cmd)
+// true: ok
+// false: error
+bool MysqlHandler::command(const char* const cmd, MYSQL_RES*& res)
 {
     for (int i = 0; i < 3; ++i)
     {
@@ -66,11 +68,12 @@ const MYSQL_RES* MysqlHandler::command(const char* const cmd)
         else
         {
             result = mysql_use_result(connection);
-            return result;
+            res = result;
+            return true;
         }
     }
     cout << "Error:Give up mysql_query\n";
-    return NULL;
+    return false;
 }
 
 void MysqlHandler::freeResult()
@@ -82,7 +85,8 @@ void MysqlHandler::freeResult()
     }
 }
 
-const MYSQL* MysqlHandler::get()
+MYSQL* MysqlHandler::get()
 {
     return connection;
 }
+
