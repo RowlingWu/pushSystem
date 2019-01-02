@@ -139,8 +139,8 @@ int32_t ProduceMsgCallData::ProduceMsg(uint32_t msgId, uint64_t startUid, uint64
         cout << "RedisErr:GETRANGE cmd fail\n";
         return common::ERR;
     }
-    const string userInfoStr(redisReply->str);
-    const size_t len = userInfoStr.length();
+    const size_t len = endUid / 8 - startUid / 8 + 1;
+    const string userInfoStr(redisReply->str, len);
     redisHandler.freeReply();
     redisMtx.unlock();
 

@@ -31,10 +31,10 @@ void CheckAndUpdateUserInfo(const int32_t tag)
         uint64_t timestamp;
         ss >> timestamp;
         time_t now = time(NULL);
-        tm* tstm = localtime((time_t*)(&timestamp));
-        tm* nowtm = localtime(&now);
-        if (tstm->tm_mday == nowtm->tm_mday &&
-                tstm->tm_mon == nowtm->tm_mon)
+        tm tstm = *localtime((time_t*)(&timestamp));
+        tm nowtm = *localtime(&now);
+        if (tstm.tm_mday == nowtm.tm_mday &&
+                tstm.tm_mon == nowtm.tm_mon)
         {
             mysqlHandler.freeResult();
             return;
