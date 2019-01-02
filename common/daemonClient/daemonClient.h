@@ -30,6 +30,7 @@ struct AsyncCall
     ClientContext context;
     Status status;
     virtual void OnGetResponse(void*) = 0;
+    virtual void OnResponseFail(void*);
 };
 
 struct ClientRegisterAsyncCall : public AsyncCall

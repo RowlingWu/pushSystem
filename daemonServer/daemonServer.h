@@ -24,6 +24,8 @@ class ServerImpl
 public:
     virtual ~ServerImpl();
     void Run();
+    void RebalanceAndSend(const ProduceMsgRequest& req);
+    void DecreaseSendingCount();
 
 private:
     void HandleRpcs();

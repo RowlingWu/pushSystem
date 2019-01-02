@@ -52,7 +52,7 @@ static void AsyncCompleteRpc(void* ptr, CompletionQueue* cq_)
         }
         else
         {
-            cout << "RPC failed\n";
+            call->OnResponseFail(ptr);
         }
         delete call;
     }

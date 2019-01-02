@@ -4,9 +4,14 @@ namespace daemon_server
 {
 
 map<uint64_t, ServerInfo> gSvrId2SvrInfo;
+map<uint64_t, ProducerCaller> gSvrId2ProducerCaller;
 mutex gSvrInfoMutex;
 CompletionQueue gCQ;
-ProducerCaller producerCaller(grpc::CreateChannel("localhost:50053", grpc::InsecureChannelCredentials()), &gCQ);
+uint64_t curUid = 0;
+atomic<uint32_t> sendingCount(0);
+
+const uint64_t UID_COUNT_PER_TIME = 1024;
+//ProducerCaller producerCaller(grpc::CreateChannel("localhost:50053", grpc::InsecureChannelCredentials()), &gCQ);
 
 ClientRegisterCallData::ClientRegisterCallData(DaemonServer::AsyncService* service, ServerCompletionQueue* cq) :
     CallData(cq), service_(service), responder_(&ctx_)
@@ -35,12 +40,23 @@ void ClientRegisterCallData::Proceed()
         {
             reply_.set_server_id(gSvrId2SvrInfo.rbegin()->first + 1);
         }
+        string addr = parseAndGetIp(ctx_.peer()) + ":"
+                    + request_.listening_port();
         gSvrId2SvrInfo[reply_.server_id()] =
-            ServerInfo(parseAndGetIp(ctx_.peer()) + ":"
-                    + request_.listening_port(),
+            ServerInfo(addr,
                     request_.proc_name(),
                     request_.group_id(),
                     time(NULL));
+
+        if ("producer" == reuqest_.proc_name())
+        {
+            gSvrId2ProducerCaller[reply_.server_id()] =
+                ProducerCaller(
+                    grpc::CreateChannel(
+                    addr,
+                    grpc::InsecureChannelCredentials()),
+                    &gCQ);
+        }
 
         gSvrInfoMutex.unlock();
 
@@ -96,8 +112,9 @@ void HeartBeatCallData::Proceed()
     }
 }
 
-BeginPushCallData::BeginPushCallData(DaemonServer::AsyncService* service, ServerCompletionQueue* cq) :
-    CallData(cq), service_(service), responder_(&ctx_)
+BeginPushCallData::BeginPushCallData(DaemonServer::AsyncService* service, ServerCompletionQueue* cq, ServerImpl* ptr) :
+    CallData(cq), service_(service), responder_(&ctx_),
+    serverImpl(ptr)
 {
     Proceed();
 }
@@ -115,13 +132,24 @@ void BeginPushCallData::Proceed()
 
         cout << "get beginPush call\n";
 
-        // TODO: rebalance policy
-        // TODO: call producer
-        ProduceMsgRequest req;
-        req.set_msg_id(request_.msg_id());
-        req.set_start_uid(request_.start_uid());
-        req.set_end_uid(request_.end_uid());
-        producerCaller.ProduceMsg(req);
+        for (curUid = request_.start_uid();
+                curUid <= request_.end_uid();)
+        {
+            if (sendingCount.load() <= xxx)
+            {
+                ProduceMsgRequest req;
+                req.set_msg_id(request_.msg_id());
+                req.set_start_uid(curUid);
+                req.set_end_uid(curUid + UID_COUNT_PER_TIME - 1);
+                serverImpl->RebalanceAndSend(req);
+                curUid += UID_COUNT_PER_TIME;
+                ++sendingCount;
+            }
+            else
+            {
+                usleep(10000);
+            }
+        }
 
         status_ = FINISH;
         responder_.Finish(reply_, Status::OK, this);
@@ -153,6 +181,7 @@ ProducerCaller::ProducerCaller(shared_ptr<Channel> channel, CompletionQueue* cq)
 void ProducerCaller::ProduceMsg(ProduceMsgRequest& req)
 {
     ProduceMsgAsyncCall* call = new ProduceMsgAsyncCall;
+    call->request.CopyFrom(req);
     call->response_reader = stub_->PrepareAsyncProduceMsg(&call->context, req, cq_);
     call->response_reader->StartCall();
     call->response_reader->Finish(&call->reply, &call->status, (void*)call);
@@ -162,7 +191,23 @@ void ProduceMsgAsyncCall::OnGetResponse(void* ptr)
 {
     ServerImpl& daemonServer = *((ServerImpl*)ptr);
 
-    cout << "produce msg reply: err:" << reply.err() << endl;
+    cout << "produce msg reply(startUid:"
+        << request.start_uid() << "), err:"
+        << reply.err() << endl;
+    if (reply.err() == common::SUCCESS)
+    {
+        daemonServer.DecreaseSendingCount();
+    }
+    else
+    {
+        daemonServer.RebalanceAndSend(request);
+    }
+}
+
+void ProduceMsgAsyncCall::OnResponseFail(void* ptr)
+{
+    ServerImpl& daemonServer = *((ServerImpl*)ptr);
+    daemonServer.RebalanceAndSend(request);
 }
 
 }; //namespace daemon_server

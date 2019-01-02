@@ -40,13 +40,19 @@ struct ServerInfo
     ServerInfo(): groupId(0), timestamp(0) {}
     ServerInfo(string addr, string proc, uint32_t grp, time_t ts): address(addr), procName(proc), groupId(grp), timestamp(ts) {}
 };
+
+class ProducerCaller;
+extern map<uint64_t, ProducerCaller> gSvrId2ProducerCaller;
 extern map<uint64_t, ServerInfo> gSvrId2SvrInfo;
 extern mutex gSvrInfoMutex;
 
 extern CompletionQueue gCQ;
 
-class ProducerCaller;
-extern ProducerCaller producerCaller;
+extern uint64_t curUid;
+extern atomic<uint32_t> sendingCount;
+
+extern const uint64_t UID_COUNT_PER_TIME;
+
 
 class ClientRegisterCallData : public common::CallData
 {
@@ -77,7 +83,7 @@ private:
 class BeginPushCallData : public common::CallData
 {
 public:
-    BeginPushCallData(DaemonServer::AsyncService* service, ServerCompletionQueue* cq);
+    BeginPushCallData(DaemonServer::AsyncService* service, ServerCompletionQueue* cq, ServerImpl* ptr);
     void Proceed();
 
 private:
@@ -85,6 +91,7 @@ private:
     BeginPushRequest request_;
     BeginPushReply reply_;
     ServerAsyncResponseWriter<BeginPushReply> responder_;
+    ServerImpl* serverImpl;
 };
 
 class ProducerCaller
@@ -100,9 +107,11 @@ private:
 
 struct ProduceMsgAsyncCall : public daemon_client::AsyncCall
 {
+    ProduceMsgRequest request;
     ProduceMsgReply reply;
     unique_ptr<ClientAsyncResponseReader<ProduceMsgReply>> response_reader;
     void OnGetResponse(void*);
+    void OnResponseFail(void*);
 };
 
 

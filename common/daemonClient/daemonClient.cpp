@@ -3,6 +3,11 @@
 namespace daemon_client
 {
 
+void AsyncCall::OnResponseFail(void*)
+{
+    cout << "RPC fail!\n";
+}
+
 DaemonClientImpl::DaemonClientImpl(shared_ptr<Channel> channel, string port, string procName, uint32_t groupId) :
     stub_(DaemonServer::NewStub(channel)),
     listeningPort_(port),
@@ -88,7 +93,7 @@ void DaemonClientImpl::ClientStatusHandler()
             req.set_server_id(serverId_);
             HeartBeat(req);
         }
-        sleep(10);
+        sleep(2);
     }
 }
 

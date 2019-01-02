@@ -25,11 +25,29 @@ void ServerImpl::Run()
     HandleRpcs();
 }
 
+void ServerImpl::RebalanceAndSend(const ProduceMsgRequest& req)
+{
+    // Select a proper ProducerCaller
+    static uint32_t id = 0;
+    gSvrInfoMutex.lock();
+    uint32_t times = (id++) % gSvrId2ProducerCaller.size();
+    auto p = gSvrId2ProducerCaller.begin();
+    for (uint32_t i = 0; i < times; ++i, ++p)
+    {}
+    p->ProduceMsg(req);
+    gSvrInfoMutex.unlock();
+}
+
+void ServerImpl::DecreaseSendingCount()
+{
+    --sendingCount;
+}
+
 void ServerImpl::HandleRpcs()
 {
     new ClientRegisterCallData(&service_, cq_.get());
     new HeartBeatCallData(&service_, cq_.get());
-    new BeginPushCallData(&service_, cq_.get());
+    new BeginPushCallData(&service_, cq_.get(), this);
     checkProcAliveThread_ = thread(&ServerImpl::CheckProcAlive, this);
 
     handleCallBackThread_ = thread(&common::AsyncCompleteRpc, this, &gCQ); // daemon will send req to servers(etc. producers), and should handle replies from these svrs
@@ -64,6 +82,7 @@ void ServerImpl::CheckProcAlive()
             {
                 cout << "server not alive, svrId:"
                     << it->first << endl;
+                gSvrId2ProducerCaller.erase(it->first);
                 it = gSvrId2SvrInfo.erase(it);
                 continue;
             }
@@ -71,7 +90,7 @@ void ServerImpl::CheckProcAlive()
         }
 
         gSvrInfoMutex.unlock();
-        sleep(20); // sleep 20 sec
+        sleep(10); // sleep 20 sec
     }
 }
 
