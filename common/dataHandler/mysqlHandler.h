@@ -4,6 +4,7 @@
 #include <iostream>
 #include <mutex>
 #include <mysql/mysql.h>
+#include <unistd.h>
 using namespace std;
 
 class MysqlHandler

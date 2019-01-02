@@ -7,6 +7,7 @@
 using namespace std;
 
 extern const char* USER_INFO_KEY[];
+extern const string TMP_USER_INFO_KEY;
 extern const uint32_t SECONDS_PER_MINUTE;
 
 extern string genReleaseKey(const char* c);

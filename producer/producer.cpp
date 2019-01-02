@@ -27,7 +27,6 @@ namespace producer
 TpsReportService gTps;
 RocketmqSendAndConsumerArgs gMQInfo;
 DefaultMQProducer gMQProducer("rename_group_name");
-const string TMP_USER_INFO_KEY = "TMP_USER_INFO_KEY";
 const int BITS_PER_BYTE = 8;
 
 ProduceMsgCallData::ProduceMsgCallData(Producer::AsyncService* service, ServerCompletionQueue* cq) :
@@ -112,7 +111,7 @@ int32_t ProduceMsgCallData::ProduceMsg(uint32_t msgId, uint64_t startUid, uint64
         // Set expiration of TMP_USER_INFO_KEY
         ostringstream sscmd;
         sscmd << "EXPIRE " << TMP_USER_INFO_KEY << " "
-            << 60 * SECONDS_PER_MINUTE;
+            << 30 * SECONDS_PER_MINUTE;
         redisReply = redisHandler.command(sscmd.str().c_str());
         if (NULL == redisReply || !redisReply->integer)
         {

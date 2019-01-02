@@ -68,11 +68,26 @@ const redisReply* RedisHandler::command(const char* const cmd)
                 << "` err:" << context->err
                 << " desc:" << context->errstr
                 << ". Retry for the " << i + 1 << "time\n";
+            freeConnection();
+            connect();
+        }
+        else if (reply->type == REDIS_REPLY_ERROR)
+        {
+            cout << "CMD:" << cmd 
+                << ". REDIS_REPLY_ERROR:" << reply->str
+                << endl;
+        }
+        else if (reply->type == REDIS_REPLY_NIL)
+        {
+            cout << "CMD:" << cmd <<
+                ". No data to access\n";
+            return reply;
         }
         else
         {
             return reply;
         }
+        sleep(1);
     }
     cout << "RedisCommandErr:give up the command!\n";
     return NULL;
@@ -108,11 +123,13 @@ const redisReply* RedisHandler::command(const char* const cmd, const char* const
         {
             cout << "CMD:" << cmd <<
                 ". No data to access\n";
+            return reply;
         }
         else
         {
             return reply;
         }
+        sleep(1);
     }
     cout << "RedisCommandErr:give up the command!\n";
     return NULL;

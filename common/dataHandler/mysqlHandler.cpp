@@ -63,6 +63,7 @@ bool MysqlHandler::command(const char* const cmd, MYSQL_RES*& res)
                 << "` and reconnect for "
                 << i + 1 << " time\n";
             freeConnection();
+            sleep(1);
             connect();
         }
         else

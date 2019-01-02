@@ -53,7 +53,6 @@ private:
 void InitProducer();
 void AsyncProducerWorker(string& topic, string& body, ProduceMsgCallData* callData);
 
-extern const string TMP_USER_INFO_KEY;
 extern const int BITS_PER_BYTE;
 
 }; // namespace producer

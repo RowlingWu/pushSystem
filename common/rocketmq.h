@@ -63,7 +63,7 @@ class RocketmqSendAndConsumerArgs {
 
 class TpsReportService {
  public:
-  TpsReportService() : tps_interval_(10), quit_flag_(false), tps_count_(0) {}
+  TpsReportService() : tps_interval_(10), quit_flag_(false), tps_count_(0), total_count_(0) {}
   void start() {
     tps_thread_.reset(
         new boost::thread(boost::bind(&TpsReportService::TpsReport, this)));
@@ -79,7 +79,9 @@ class TpsReportService {
   void TpsReport() {
     while (!quit_flag_.load()) {
       boost::this_thread::sleep_for(tps_interval_);
-      std::cout << "tps: " << tps_count_.load() << " per " << tps_interval_ << " sec\n";
+      total_count_.store(total_count_.load() + tps_count_.load());
+      std::cout << "tps: " << tps_count_.load() << " per " << tps_interval_ << " sec. "
+          << "total counts:" << total_count_.load() << endl;
       tps_count_.store(0);
     }
   }
@@ -89,6 +91,7 @@ class TpsReportService {
   boost::shared_ptr<boost::thread> tps_thread_;
   boost::atomic<bool> quit_flag_;
   boost::atomic<long> tps_count_;
+  boost::atomic<uint64_t> total_count_;
 };
 
 extern void PrintResult(rocketmq::SendResult* result);

@@ -6,6 +6,8 @@ const char* USER_INFO_KEY[] = {
     "PUSH_SWITCH_OPENED_"
 };
 
+const string TMP_USER_INFO_KEY = "TMP_USER_INFO_KEY";
+
 const uint32_t SECONDS_PER_MINUTE = 60;
 
 string genReleaseKey(const char* c)

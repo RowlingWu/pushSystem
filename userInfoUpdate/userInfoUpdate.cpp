@@ -192,35 +192,44 @@ void UpdateUserInfo(const int32_t tag)
             return;
         }
         redisHandler.freeReply();
-    }
-    // Write last_update_time to mysql 
-    ostringstream sscmd;
-    time_t now = time(NULL);
-    sscmd << "UPDATE user_info_update_record SET "
-        << "last_update_time = " << (uint64_t)now
-        << " WHERE type = " << tag;
-    MYSQL_RES* res;
-    if (!mysqlHandler.command(sscmd.str().c_str(), res))
-    {
-        cout << "Stop update " << USER_INFO_KEY[tag]
-            << endl;
-        return;
-    }
-    int32_t affectedRows = mysql_affected_rows(mysqlHandler.get());
-    mysqlHandler.freeResult();
-    if (affectedRows <= 0)
-    {
+
+        // Write last_update_time to mysql 
         ostringstream sscmd;
-        sscmd << "INSERT INTO user_info_update_record"
-            << "(type, last_update_time) VALUES("
-            << tag << "," << (uint64_t)now << ")";
+        time_t now = time(NULL);
+        sscmd << "UPDATE user_info_update_record SET "
+            << "last_update_time = " << (uint64_t)now
+            << " WHERE type = " << tag;
+        MYSQL_RES* res;
         if (!mysqlHandler.command(sscmd.str().c_str(), res))
         {
             cout << "Stop update " << USER_INFO_KEY[tag]
                 << endl;
             return;
         }
+        int32_t affectedRows = mysql_affected_rows(mysqlHandler.get());
         mysqlHandler.freeResult();
+        if (affectedRows <= 0)
+        {
+            ostringstream sscmd;
+            sscmd << "INSERT INTO user_info_update_record"
+                << "(type, last_update_time) VALUES("
+                << tag << "," << (uint64_t)now << ")";
+            if (!mysqlHandler.command(sscmd.str().c_str(), res))
+            {
+                cout << "Stop update " << USER_INFO_KEY[tag]
+                    << endl;
+                return;
+            }
+            mysqlHandler.freeResult();
+        }
+
+        // Delete TMP_USER_INFO_KEY from Redis, because
+        // the RELEASE_KEY has been updated, and the
+        // TMP_USER_INFO_KEY should be rebuild by the
+        // producer process
+        cmd = "DEL " + TMP_USER_INFO_KEY;
+        redisHandler.command(cmd.c_str());
+        redisHandler.freeReply();
     }
     cout << "Finish updating " << USER_INFO_KEY[tag]
         << endl;

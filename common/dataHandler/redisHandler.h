@@ -3,6 +3,7 @@
 
 #include <iostream>
 #include <mutex>
+#include <unistd.h>
 #include "hiredis.h"
 using namespace std;
 
