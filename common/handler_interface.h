@@ -52,6 +52,8 @@ static void AsyncCompleteRpc(void* ptr, CompletionQueue* cq_)
         }
         else
         {
+            cout << "error_code:" << call->status.error_code()
+                << ", error_msg:" << call->status.error_message() << endl;
             call->OnResponseFail(ptr);
         }
         delete call;

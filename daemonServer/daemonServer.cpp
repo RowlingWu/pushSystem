@@ -221,6 +221,7 @@ void ProduceMsgAsyncCall::OnGetResponse(void* ptr)
     else
     {
         cout << "get errCode. re-send.\n";
+        sleep(1);
         gSvrInfoMutex.lock();
         daemonServer.RebalanceAndSend(request);
         gSvrInfoMutex.unlock();
@@ -231,6 +232,7 @@ void ProduceMsgAsyncCall::OnResponseFail(void* ptr)
 {
     ServerImpl& daemonServer = *((ServerImpl*)ptr);
     cout << "send msg fail. re-send.\n";
+    sleep(1);
     gSvrInfoMutex.lock();
     daemonServer.RebalanceAndSend(request);
     gSvrInfoMutex.unlock();
