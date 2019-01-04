@@ -79,7 +79,7 @@ void DaemonClientImpl::ClientStatusHandler()
         clientStatusMtx_.unlock();
         if (NO_SERVER == status)
         {
-            cout << "sending register msg\n";
+            cout << "Register.\n";
             ClientRegisterRequest req;
             req.set_listening_port(listeningPort_);
             req.set_proc_name(procName_);
@@ -88,7 +88,7 @@ void DaemonClientImpl::ClientStatusHandler()
         }
         else
         {
-            cout << "sending heartB msg\n";
+            cout << "Heart beat.\n";
             HeartBeatRequest req;
             req.set_server_id(serverId_);
             HeartBeat(req);
@@ -102,7 +102,13 @@ void ClientRegisterAsyncCall::OnGetResponse(void* ptr)
     DaemonClientImpl& client = *((DaemonClientImpl*)ptr);
     if (common::SUCCESS == reply.err())
     {
+        cout << "Register success.\n";
         client.SetServerId(reply.server_id());
+    }
+    else
+    {
+        cout << "Register fail.\n";
+        client.SetClientStatus(NO_SERVER);
     }
 }
 
@@ -111,7 +117,12 @@ void HeartBeatAsyncCall::OnGetResponse(void* ptr)
     DaemonClientImpl& client = *((DaemonClientImpl*)ptr);
     if (common::ERR == reply.err())
     {
+        cout << "Send heart beat fail.\n";
         client.SetClientStatus(NO_SERVER);
+    }
+    else
+    {
+        cout << "Send heart beat success.\n";
     }
 }
 

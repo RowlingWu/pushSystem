@@ -70,6 +70,8 @@ void ProduceMsgCallData::NotifyOne()
     --waitForSendCount;
     if (0 == waitForSendCount)
     {
+cout << "Finish producing msg. Notify daemon. startUid:" << request_.start_uid()
+    << " endUid:" << request_.end_uid() << endl;
         status_ = FINISH;
         reply_.set_err(common::SUCCESS);
         responder_.Finish(reply_, Status::OK, this);
@@ -159,14 +161,23 @@ int32_t ProduceMsgCallData::ProduceMsg(uint32_t msgId, uint64_t startUid, uint64
     // Producer sends
     waitForSendCount = uidsToSend.size();
     const size_t uidCount = uidsToSend.size();
-    for (size_t i = 0; i < uidCount; ++i)
+    if (uidCount)
     {
-        ProducerMsg msg;
-        msg.set_to_uid(uidsToSend[i]);
-        msg.set_msg_id(msgId);
-        string body;
-        msg.SerializeToString(&body);
-        AsyncProducerWorker(gMQInfo.topic, body, this);
+        for (size_t i = 0; i < uidCount; ++i)
+        {
+            ProducerMsg msg;
+            msg.set_to_uid(uidsToSend[i]);
+            msg.set_msg_id(msgId);
+            string body;
+            msg.SerializeToString(&body);
+            AsyncProducerWorker(gMQInfo.topic, body, this);
+        }
+    }
+    else
+    {
+        status_ = FINISH;
+        reply_.set_err(common::SUCCESS);
+        responder_.Finish(reply_, Status::OK, this);
     }
     return common::SUCCESS;
 }
@@ -175,8 +186,6 @@ int32_t ProduceMsgCallData::ProduceMsg(uint32_t msgId, uint64_t startUid, uint64
 void ProducerSendCallBack::onSuccess(SendResult& result)
 {
     gTps.Increment();
-    cout << "SendToBrokerSuccess.";
-    PrintResult(&result);
 
     callData->NotifyOne();
 }
@@ -198,6 +207,7 @@ void AsyncProducerWorker(string& topic, string& body, ProduceMsgCallData* callDa
     catch (MQException& e)
     {
         cout << __func__ << " exception:" << e.what() << ".Retry sending..." << endl;
+        sleep(1);
         AsyncProducerWorker(topic, body, callData);
     }
 }

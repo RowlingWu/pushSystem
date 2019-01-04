@@ -13,5 +13,5 @@ int main()
     std::thread thread_ = std::thread(&DaemonClientImpl::AsyncCompleteRpc, &client);
 
     daemon_client::ServerImpl<Producer> server;
-    server.Run("localhost:" + serverListeningPort);
+    server.Run("192.168.99.100:" + serverListeningPort);
 }
