@@ -132,42 +132,46 @@ void ServerImpl::BeginPushCallData::Proceed()
     else if (status_ == PROCESS)
     {
         new BeginPushCallData(service_, cq_, serverImpl);
-
-        cout << "get beginPush call\n";
-
-        for (curUid = request_.start_uid();
-                curUid <= (uint64_t)request_.end_uid();)
-        {
-            gSvrInfoMutex.lock();
-            uint32_t producerSize = gSvrId2ProducerCaller.size();
-            if (sendingCount.load() <= 3 * producerSize
-                    && producerSize > 0)
-            {
-cout << "curUid:" << curUid << " endUid:" << (uint64_t)request_.end_uid() << endl;
-                ProduceMsgRequest req;
-                req.set_msg_id(request_.msg_id());
-                req.set_start_uid(curUid);
-                req.set_end_uid(curUid + UID_COUNT_PER_TIME - 1);
-                ++sendingCount;
-                serverImpl->RebalanceAndSend(req);
-                gSvrInfoMutex.unlock();
-                curUid += UID_COUNT_PER_TIME;
-            }
-            else
-            {
-                gSvrInfoMutex.unlock();
-                usleep(10000);
-            }
-        }
-
-        status_ = FINISH;
-        responder_.Finish(reply_, Status::OK, this);
+        NotifyProducers();
     }
     else
     {
         GPR_ASSERT(status_ == FINISH);
         delete this;
     }
+}
+
+void ServerImpl::BeginPushCallData::NotifyProducers()
+{
+    cout << "get beginPush call\n";
+
+    for (curUid = request_.start_uid();
+            curUid <= (uint64_t)request_.end_uid();)
+    {
+        gSvrInfoMutex.lock();
+        uint32_t producerSize = gSvrId2ProducerCaller.size();
+        if (sendingCount.load() <= 3 * producerSize
+                && producerSize > 0)
+        {
+cout << "curUid:" << curUid << " endUid:" << (uint64_t)request_.end_uid() << endl;
+            ProduceMsgRequest req;
+            req.set_msg_id(request_.msg_id());
+            req.set_start_uid(curUid);
+            req.set_end_uid(curUid + UID_COUNT_PER_TIME - 1);
+            ++sendingCount;
+            serverImpl->RebalanceAndSend(req);
+            gSvrInfoMutex.unlock();
+            curUid += UID_COUNT_PER_TIME;
+        }
+        else
+        {
+            gSvrInfoMutex.unlock();
+            usleep(10000);
+        }
+    }
+
+    status_ = FINISH;
+    responder_.Finish(reply_, Status::OK, this);
 }
 
 string parseAndGetIp(const string& peer)
@@ -268,8 +272,8 @@ void ServerImpl::RebalanceAndSend(const ProduceMsgRequest& req)
     {
         uint32_t times = (id++) % producerSize;
         auto p = gSvrId2ProducerCaller.begin();
-cout << "Prodc size:" << gSvrId2ProducerCaller.size()
-    << " times:" << times << endl;
+/*cout << "Prodc size:" << gSvrId2ProducerCaller.size()
+    << " times:" << times << endl;*/
         for (uint32_t i = 0; i < times; ++i, ++p)
         {}
         p->second.ProduceMsg(req);
@@ -296,7 +300,8 @@ void ServerImpl::HandleRpcs()
     {
         GPR_ASSERT(cq_->Next(&tag, &ok));
         GPR_ASSERT(ok);
-        static_cast<common::CallData*>(tag)->Proceed();
+        thread t = thread(&common::CallData::Proceed, static_cast<common::CallData*>(tag));
+        t.detach();
     }
 }
 

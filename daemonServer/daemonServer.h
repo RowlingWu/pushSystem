@@ -98,6 +98,7 @@ private:
     public:
         BeginPushCallData(DaemonServer::AsyncService* service, ServerCompletionQueue* cq, ServerImpl* ptr);
         void Proceed();
+        void NotifyProducers();
 
     private:
         DaemonServer::AsyncService* service_;
