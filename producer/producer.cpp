@@ -192,7 +192,10 @@ void ProducerSendCallBack::onSuccess(SendResult& result)
 
 void ProducerSendCallBack::onException(MQException& e)
 {
-    cout << "SendToBrokerException: " << e.what() << endl;
+    cout << "SendToBrokerException: " << e.what()
+       << ". Retry sending...\n";
+    sleep(1);
+    AsyncProducerWorker(topic, body, callData);
 }
 
 void AsyncProducerWorker(string& topic, string& body, ProduceMsgCallData* callData)
@@ -202,7 +205,7 @@ void AsyncProducerWorker(string& topic, string& body, ProduceMsgCallData* callDa
             body); // body
     try
     {
-        gMQProducer.send(msg, new ProducerSendCallBack(callData));
+        gMQProducer.send(msg, new ProducerSendCallBack(callData, topic, body));
     }
     catch (MQException& e)
     {

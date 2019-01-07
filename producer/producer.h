@@ -45,9 +45,11 @@ class ProducerSendCallBack : public AutoDeleteSendCallBack
     virtual void onSuccess(SendResult& result);
     virtual void onException(MQException& e);
 public:
-    ProducerSendCallBack(ProduceMsgCallData* c) : callData(c) {}
+    ProducerSendCallBack(ProduceMsgCallData* c, const string& topic_, const string& body_) : callData(c), topic(topic_), body(body_) {}
 private:
     ProduceMsgCallData* callData;
+    string topic;
+    string body;
 };
 
 void InitProducer();
