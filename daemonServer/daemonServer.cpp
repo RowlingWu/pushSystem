@@ -12,7 +12,7 @@ atomic<uint32_t> sendingCount(0);
 
 const uint64_t UID_COUNT_PER_TIME = 1024;
 
-const double ServerImpl::ALIVE_DURATION = 20; // sec
+const double ServerImpl::ALIVE_DURATION = 10; // sec
 
 ClientRegisterCallData::ClientRegisterCallData(DaemonServer::AsyncService* service, ServerCompletionQueue* cq) :
     CallData(cq), service_(service), responder_(&ctx_)
@@ -272,8 +272,6 @@ void ServerImpl::RebalanceAndSend(const ProduceMsgRequest& req)
     {
         uint32_t times = (id++) % producerSize;
         auto p = gSvrId2ProducerCaller.begin();
-/*cout << "Prodc size:" << gSvrId2ProducerCaller.size()
-    << " times:" << times << endl;*/
         for (uint32_t i = 0; i < times; ++i, ++p)
         {}
         p->second.ProduceMsg(req);

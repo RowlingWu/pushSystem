@@ -25,6 +25,9 @@ using namespace daemon_server;
 namespace start_push
 {
 
+extern time_t startTime;
+extern time_t endTime;
+
 class StartPush
 {
 public:
