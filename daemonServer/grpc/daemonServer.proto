@@ -7,6 +7,7 @@ service DaemonServer
     rpc ClientRegister (ClientRegisterRequest) returns (ClientRegisterReply) {}
     rpc HeartBeat (HeartBeatRequest) returns (HeartBeatReply) {}
     rpc BeginPush (BeginPushRequest) returns (BeginPushReply) {}
+    rpc LoadBalance (LoadBalanceRequest) returns (LoadBalanceReply) {}
 }
 
 message ClientRegisterRequest
@@ -40,6 +41,17 @@ message BeginPushRequest
 }
 
 message BeginPushReply
+{
+    int32 err = 1;
+}
+
+message LoadBalanceRequest
+{
+    uint64 server_id = 1;
+    string score = 2;  // double
+}
+
+message LoadBalanceReply
 {
     int32 err = 1;
 }

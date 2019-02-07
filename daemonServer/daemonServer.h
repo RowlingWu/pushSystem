@@ -39,8 +39,9 @@ struct ServerInfo
     string procName;
     uint32_t groupId;
     time_t timestamp;
-    ServerInfo(): groupId(0), timestamp(0) {}
-    ServerInfo(string addr, string proc, uint32_t grp, time_t ts): address(addr), procName(proc), groupId(grp), timestamp(ts) {}
+    double score;  // load balance info
+    ServerInfo(): groupId(0), timestamp(0), score(0.0) {}
+    ServerInfo(string addr, string proc, uint32_t grp, time_t ts): address(addr), procName(proc), groupId(grp), timestamp(ts), score(0.0) {}
 };
 
 extern map<uint64_t, ServerInfo> gSvrId2SvrInfo;
@@ -78,6 +79,19 @@ private:
     HeartBeatRequest request_;
     HeartBeatReply reply_;
     ServerAsyncResponseWriter<HeartBeatReply> responder_;
+};
+
+class LoadBalanceCallData : public common::CallData
+{
+public:
+    LoadBalanceCallData(DaemonServer::AsyncService* service, ServerCompletionQueue* cq);
+    void Proceed();
+
+private:
+    DaemonServer::AsyncService* service_;
+    LoadBalanceRequest request_;
+    LoadBalanceReply reply_;
+    ServerAsyncResponseWriter<LoadBalanceReply> responder_;
 };
 
 class ServerImpl

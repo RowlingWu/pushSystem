@@ -5,6 +5,7 @@
 #include <memory>
 #include <string>
 #include <thread>
+#include <chrono>
 
 #include <grpcpp/grpcpp.h>
 #include <grpc/support/log.h>
@@ -25,8 +26,8 @@ using namespace daemon_server;
 namespace start_push
 {
 
-extern time_t startTime;
-extern time_t endTime;
+extern std::chrono::time_point<std::chrono::high_resolution_clock> startTime;
+extern std::chrono::time_point<std::chrono::high_resolution_clock> endTime;
 
 class StartPush
 {

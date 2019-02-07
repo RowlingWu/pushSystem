@@ -7,7 +7,15 @@ template<>
 void ServerImpl<producer::Producer>::HandleRpcs()
 {
     producer::InitProducer();
-    new producer::ProduceMsgCallData(&service_, cq_.get());
+
+    producer::ProducerImpl producerImpl(
+            grpc::CreateChannel(
+                "192.168.99.100:50051",
+                grpc::InsecureChannelCredentials())
+    );
+    thread t = thread(&producer::ProducerImpl::SendLoadBalanceInfo, &producerImpl);
+    t.detach();
+    new producer::ProduceMsgCallData(&service_, cq_.get(), &producerImpl);
 
     void* tag;
     bool ok;
@@ -29,8 +37,9 @@ RocketmqSendAndConsumerArgs gMQInfo;
 DefaultMQProducer gMQProducer("rename_group_name");
 const int BITS_PER_BYTE = 8;
 
-ProduceMsgCallData::ProduceMsgCallData(Producer::AsyncService* service, ServerCompletionQueue* cq) :
-    CallData(cq), service_(service), responder_(&ctx_)
+ProduceMsgCallData::ProduceMsgCallData(Producer::AsyncService* service, ServerCompletionQueue* cq, ProducerImpl* p) :
+    CallData(cq), service_(service),
+    responder_(&ctx_), pProducerImpl(p)
 {
     Proceed();
 }
@@ -44,7 +53,7 @@ void ProduceMsgCallData::Proceed()
     }
     else if (status_ == PROCESS)
     {
-        new ProduceMsgCallData(service_, cq_);
+        new ProduceMsgCallData(service_, cq_, pProducerImpl);
 
         reply_.set_err(common::ERR);
         cout << "Start producing msg. msgId:"
@@ -53,9 +62,6 @@ void ProduceMsgCallData::Proceed()
             << " endUid:" << request_.end_uid() << endl;
 
         ProduceMsg(request_.msg_id(), request_.start_uid(), request_.end_uid());
-
-        //status_ = FINISH;
-        //responder_.Finish(reply_, Status::OK, this);
     }
     else
     {
@@ -75,12 +81,16 @@ cout << "Finish producing msg. Notify daemon. startUid:" << request_.start_uid()
         status_ = FINISH;
         reply_.set_err(common::SUCCESS);
         responder_.Finish(reply_, Status::OK, this);
+        endTime = chrono::high_resolution_clock::now();
+        pProducerImpl->CalLoadBalanceInfo(startTime, endTime);
     }
     waitForSndCntMtx.unlock();
 }
 
 int32_t ProduceMsgCallData::ProduceMsg(uint32_t msgId, uint64_t startUid, uint64_t endUid)
 {
+    startTime = chrono::high_resolution_clock::now();
+
     redisMtx.lock();
     // Check KEY exists
     string cmd = "EXISTS " + TMP_USER_INFO_KEY;
@@ -178,6 +188,8 @@ int32_t ProduceMsgCallData::ProduceMsg(uint32_t msgId, uint64_t startUid, uint64
         status_ = FINISH;
         reply_.set_err(common::SUCCESS);
         responder_.Finish(reply_, Status::OK, this);
+        endTime = chrono::high_resolution_clock::now();
+        pProducerImpl->CalLoadBalanceInfo(startTime, endTime);
     }
     return common::SUCCESS;
 }
@@ -227,6 +239,89 @@ void InitProducer()
     gMQProducer.setNamesrvDomain(gMQInfo.namesrv_domain);
     gMQProducer.start();
     gTps.start();
+}
+
+
+ProducerImpl::ProducerImpl(shared_ptr<Channel> channel) :
+    stub_(DaemonServer::NewStub(channel)),
+    totalTasks(0), avgTime(0.0)
+{
+    handleCallBackThread_ = thread(&common::AsyncCompleteRpc, this, &cq_);
+}
+
+void ProducerImpl::CalLoadBalanceInfo(chrono::time_point<chrono::high_resolution_clock>& startTime, chrono::time_point<chrono::high_resolution_clock> endTime)
+{
+    loadBalanceMutex.lock();
+
+    ++totalTasks;
+    double usedTime = chrono::duration<double, milli>(endTime - startTime).count();
+    avgTime = (totalTasks - 1) * avgTime / totalTasks + usedTime / totalTasks;
+
+    loadBalanceMutex.unlock();
+}
+
+void ProducerImpl::LoadBalanceAsyncCall::OnGetResponse(void*)
+{
+}
+
+void ProducerImpl::LoadBalance(LoadBalanceRequest& req)
+{
+    LoadBalanceAsyncCall* call = new LoadBalanceAsyncCall;
+    call->response_reader = stub_->PrepareAsyncLoadBalance(&call->context, req, &cq_);
+    call->response_reader->StartCall();
+    call->response_reader->Finish(&call->reply, &call->status, (void*)call);
+}
+
+void ProducerImpl::SendLoadBalanceInfo()
+{
+    LoadBalanceRequest req;
+    while (true)
+    {
+        sleep(10);
+
+        uint64_t serverId;  // get server id
+        if (NULL != pDaemonClientImpl &&
+            pDaemonClientImpl->GetServerId(serverId))
+        {
+            req.set_server_id(serverId);
+        }
+        else
+        {
+            continue;
+        }
+
+        loadBalanceMutex.lock();
+cout << "[" << __func__ << "]totalTasks:" << totalTasks
+    << " avgTime:" << avgTime << endl;
+        stringstream ssScore;   // get score
+        if (0 == totalTasks)
+        {
+            req.set_score("0.0");
+        }
+        else if (avgTime < 0.001)
+        {
+            ssScore << DBL_MAX;
+            req.set_score(ssScore.str());
+        }
+        else
+        {
+            double score = (double)totalTasks / avgTime;
+            ssScore << score;
+            req.set_score(ssScore.str());
+        }
+        avgTime = 0.0;        // reset score
+        totalTasks = 0;
+        loadBalanceMutex.unlock();
+
+        LoadBalance(req);
+    }
+}
+
+DaemonClientImpl* pDaemonClientImpl = NULL;
+
+void SetDaemonClientImpl(DaemonClientImpl* p)
+{
+    pDaemonClientImpl = p;
 }
 
 }; // namespace producer

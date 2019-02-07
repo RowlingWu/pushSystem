@@ -5,7 +5,7 @@ namespace user_info_update
     
 const uint32_t COUNTS_PER_LOOP = 10240;
 const uint64_t END_UID = 200000000;
-const uint32_t DIFF_PERCENTAGE = 1;
+const uint32_t DIFF_PERCENTAGE = 90000;
 vector<string> tableNames = {
     "official_fans",
     "month_active_users",
@@ -164,7 +164,7 @@ void UpdateUserInfo(const int32_t tag)
         }
         uint32_t bitcounts = redisRes->integer;
         redisHandler.freeReply();
-        uint32_t diff = bitcounts * 1000
+        uint32_t diff = bitcounts * 1000000
             / (double)END_UID;
         cout << "Diff count:" << bitcounts
             << ". Diff percentage:" << diff << endl;

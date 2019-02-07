@@ -58,6 +58,7 @@ public:
     void HeartBeat(HeartBeatRequest& req);
 
     void SetServerId(uint64_t serverId);
+    bool GetServerId(uint64_t& serverId);
     void SetClientStatus(ClientStatus status);
 
 private:

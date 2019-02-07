@@ -63,6 +63,21 @@ void DaemonClientImpl::SetServerId(uint64_t serverId)
     clientStatusMtx_.unlock();
 }
 
+bool DaemonClientImpl::GetServerId(uint64_t& serverId)
+{
+    bool ok = false;
+
+    clientStatusMtx_.lock();
+    if (REGISTERED == clientStatus_)
+    {
+        serverId = serverId_;
+        ok = true;
+    }
+    clientStatusMtx_.unlock();
+
+    return ok;
+}
+
 void DaemonClientImpl::SetClientStatus(ClientStatus status)
 {
     clientStatusMtx_.lock();

@@ -72,6 +72,33 @@ void ClientRegisterCallData::Proceed()
     }
 }
 
+LoadBalanceCallData::LoadBalanceCallData(DaemonServer::AsyncService* service, ServerCompletionQueue* cq) :
+    CallData(cq), service_(service), responder_(&ctx_)
+{
+    Proceed();
+}
+
+void LoadBalanceCallData::Proceed()
+{
+    if (status_ == CREATE)
+    {
+        status_ = PROCESS;
+        service_->RequestLoadBalance(&ctx_, &request_, &responder_, cq_, cq_, this);
+    }
+    else if (status_ == PROCESS)
+    {
+        new LoadBalanceCallData(service_, cq_);
+cout << request_.server_id() << " " << request_.score() << endl;
+        status_ = FINISH;
+        responder_.Finish(reply_, Status::OK, this);
+    }
+    else
+    {
+        GPR_ASSERT(status_ == FINISH);
+        delete this;
+    }
+}
+
 HeartBeatCallData::HeartBeatCallData(DaemonServer::AsyncService* service, ServerCompletionQueue* cq) :
     CallData(cq), service_(service), responder_(&ctx_)
 {
@@ -288,6 +315,7 @@ void ServerImpl::HandleRpcs()
     new ClientRegisterCallData(&service_, cq_.get());
     new HeartBeatCallData(&service_, cq_.get());
     new BeginPushCallData(&service_, cq_.get(), this);
+    new LoadBalanceCallData(&service_, cq_.get());
     checkProcAliveThread_ = thread(&ServerImpl::CheckProcAlive, this);
 
     handleCallBackThread_ = thread(&common::AsyncCompleteRpc, this, &gCQ); // daemon will send req to servers(etc. producers), and should handle replies from these svrs
