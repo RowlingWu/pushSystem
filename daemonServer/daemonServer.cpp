@@ -257,7 +257,7 @@ ProducerCaller::ProducerCaller(ProducerCaller& other)
 
 ProducerCaller::ProducerCaller(const ProducerCaller& other) : cq_(other.cq_)
 {
-    stub_.reset(other.stub_.get());
+    stub_.reset(other.stub_.release());
 }
 
 ProducerCaller::ProducerCaller(shared_ptr<Channel> channel, CompletionQueue* cq) :
@@ -351,6 +351,11 @@ void ServerImpl::SelectProducerAndSend(const ProduceMsgRequest& req)
                 (double)factor *
                 gRank2Score.rbegin()->first;
             double& score = gRank2Score.lower_bound(randomRank)->second;//lower_bound(key): not less than key
+cout << "[debug]score:" << score << endl;
+if (gRank2Score.lower_bound(randomRank) != gRank2Score.end())
+{
+    cout << "[debug]not gRank2Score.end\n";
+}
             gScore2ProducerCaller[score].ProduceMsg(req);
             gSvrInfoMutex.unlock();
             return;

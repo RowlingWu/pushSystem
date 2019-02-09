@@ -305,7 +305,7 @@ cout << "[" << __func__ << "]totalTasks:" << totalTasks
         }
         else
         {
-            double score = (double)totalTasks / avgTime;
+            double score = (double)totalTasks / avgTime * 10000;
             ssScore << score;
             req.set_score(ssScore.str());
         }
