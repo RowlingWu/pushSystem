@@ -4,7 +4,8 @@ namespace daemon_server
 {
 
 map<uint64_t, ServerInfo> gSvrId2SvrInfo;
-map<uint64_t, ProducerCaller> gSvrId2ProducerCaller;
+map<double, ProducerCaller> gScore2ProducerCaller;
+map<double, double> gRank2Score;
 mutex gSvrInfoMutex;
 CompletionQueue gCQ;
 uint64_t curUid = 0;
@@ -43,11 +44,13 @@ void ClientRegisterCallData::Proceed()
         }
         string addr = parseAndGetIp(ctx_.peer()) + ":"
                     + request_.listening_port();
-        gSvrId2SvrInfo[reply_.server_id()] =
+        auto iter2Ok = gSvrId2SvrInfo.insert(make_pair(
+            reply_.server_id(),
             ServerInfo(addr,
                     request_.proc_name(),
                     request_.group_id(),
-                    time(NULL));
+                    time(NULL))
+        ));
 
         if ("producer" == request_.proc_name())
         {
@@ -56,8 +59,19 @@ void ClientRegisterCallData::Proceed()
                 addr,
                 grpc::InsecureChannelCredentials()),
                 &gCQ);
-            gSvrId2ProducerCaller[reply_.server_id()] =
-                producerCaller;
+            double score = 10000.0;
+            if (!gScore2ProducerCaller.empty())
+            {
+                gScore2ProducerCaller.crbegin()->first;
+                score = gScore2ProducerCaller.crbegin()->first + 0.01;
+            }
+            iter2Ok.first->second.score = score;
+            auto score2ProducerCaller2Ok =
+                gScore2ProducerCaller.insert(make_pair(
+                        score, producerCaller
+            ));
+            iter2Ok.first->second.pScore2Producer = score2ProducerCaller2Ok.first;
+            Rebalance();
         }
 
         gSvrInfoMutex.unlock();
@@ -88,7 +102,29 @@ void LoadBalanceCallData::Proceed()
     else if (status_ == PROCESS)
     {
         new LoadBalanceCallData(service_, cq_);
-cout << request_.server_id() << " " << request_.score() << endl;
+cout << "[LoadBalanceCallData::" << __func__
+    << "]svrId:" << request_.server_id()
+    << " score:" << request_.score() << endl;
+
+        reply_.set_err(common::SUCCESS);
+        uint64_t serverId = request_.server_id();
+        double score;
+        stringstream ssScore;
+        ssScore << request_.score();
+        ssScore >> score;
+
+        gSvrInfoMutex.lock();
+        auto pSvrId2SvrInfo = gSvrId2SvrInfo.find(serverId);
+        if (gSvrId2SvrInfo.end() == pSvrId2SvrInfo)
+        {
+            reply_.set_err(common::ERR);
+        }
+        else
+        {
+            pSvrId2SvrInfo->second.score = score;
+        }
+        gSvrInfoMutex.unlock();
+
         status_ = FINISH;
         responder_.Finish(reply_, Status::OK, this);
     }
@@ -176,9 +212,9 @@ void ServerImpl::BeginPushCallData::NotifyProducers()
             curUid <= (uint64_t)request_.end_uid();)
     {
         gSvrInfoMutex.lock();
-        uint32_t producerSize = gSvrId2ProducerCaller.size();
-        if (sendingCount.load() <= 3 * producerSize
-                && producerSize > 0)
+        uint32_t producerSize = gScore2ProducerCaller.size();
+        gSvrInfoMutex.unlock();
+        if (sendingCount.load() <= 3 * producerSize)
         {
 cout << "curUid:" << curUid << " endUid:" << (uint64_t)request_.end_uid() << endl;
             ProduceMsgRequest req;
@@ -186,13 +222,11 @@ cout << "curUid:" << curUid << " endUid:" << (uint64_t)request_.end_uid() << end
             req.set_start_uid(curUid);
             req.set_end_uid(curUid + UID_COUNT_PER_TIME - 1);
             ++sendingCount;
-            serverImpl->RebalanceAndSend(req);
-            gSvrInfoMutex.unlock();
+            serverImpl->SelectProducerAndSend(req);
             curUid += UID_COUNT_PER_TIME;
         }
         else
         {
-            gSvrInfoMutex.unlock();
             usleep(10000);
         }
     }
@@ -214,6 +248,16 @@ string parseAndGetIp(const string& peer)
 
 ProducerCaller::ProducerCaller()
 {
+}
+
+ProducerCaller::ProducerCaller(ProducerCaller& other)
+{
+    *this = other;
+}
+
+ProducerCaller::ProducerCaller(const ProducerCaller& other) : cq_(other.cq_)
+{
+    stub_.reset(other.stub_.get());
 }
 
 ProducerCaller::ProducerCaller(shared_ptr<Channel> channel, CompletionQueue* cq) :
@@ -254,7 +298,7 @@ void ProduceMsgAsyncCall::OnGetResponse(void* ptr)
         cout << "get errCode. re-send.\n";
         sleep(1);
         gSvrInfoMutex.lock();
-        daemonServer.RebalanceAndSend(request);
+        daemonServer.SelectProducerAndSend(request);
         gSvrInfoMutex.unlock();
     }
 }
@@ -265,7 +309,7 @@ void ProduceMsgAsyncCall::OnResponseFail(void* ptr)
     cout << "send msg fail. re-send.\n";
     sleep(1);
     gSvrInfoMutex.lock();
-    daemonServer.RebalanceAndSend(request);
+    daemonServer.SelectProducerAndSend(request);
     gSvrInfoMutex.unlock();
 }
 
@@ -290,18 +334,29 @@ void ServerImpl::Run()
     HandleRpcs();
 }
 
-void ServerImpl::RebalanceAndSend(const ProduceMsgRequest& req)
+void ServerImpl::SelectProducerAndSend(const ProduceMsgRequest& req)
 {
-    // Select a proper ProducerCaller
-    static uint32_t id = 0;
-    uint32_t producerSize = gSvrId2ProducerCaller.size();
-    if (producerSize)
+    while (true)
     {
-        uint32_t times = (id++) % producerSize;
-        auto p = gSvrId2ProducerCaller.begin();
-        for (uint32_t i = 0; i < times; ++i, ++p)
-        {}
-        p->second.ProduceMsg(req);
+        gSvrInfoMutex.lock();
+        uint64_t producerSize = gScore2ProducerCaller.size();
+        if (producerSize)
+        {
+            // Load balance policy
+            static const uint32_t factor = 1000000;
+            mt19937 rng;
+            rng.seed(random_device()());
+            uniform_int_distribution<mt19937::result_type> dist(0, factor);
+            double randomRank = dist(rng) /
+                (double)factor *
+                gRank2Score.rbegin()->first;
+            double& score = gRank2Score.lower_bound(randomRank)->second;//lower_bound(key): not less than key
+            gScore2ProducerCaller[score].ProduceMsg(req);
+            gSvrInfoMutex.unlock();
+            return;
+        }
+        gSvrInfoMutex.unlock();
+        sleep(1);
     }
 }
 
@@ -317,6 +372,7 @@ void ServerImpl::HandleRpcs()
     new BeginPushCallData(&service_, cq_.get(), this);
     new LoadBalanceCallData(&service_, cq_.get());
     checkProcAliveThread_ = thread(&ServerImpl::CheckProcAlive, this);
+    loadBalanceThread_ = thread(&ServerImpl::ReBalanceTimer, this);
 
     handleCallBackThread_ = thread(&common::AsyncCompleteRpc, this, &gCQ); // daemon will send req to servers(etc. producers), and should handle replies from these svrs
 
@@ -351,8 +407,10 @@ void ServerImpl::CheckProcAlive()
             {
                 cout << "server not alive, svrId:"
                     << it->first << endl;
-                gSvrId2ProducerCaller.erase(it->first);
+                gScore2ProducerCaller.erase(
+                        it->second.pScore2Producer);
                 it = gSvrId2SvrInfo.erase(it);
+                Rebalance();
                 continue;
             }
             ++it;
@@ -360,6 +418,47 @@ void ServerImpl::CheckProcAlive()
 
         gSvrInfoMutex.unlock();
         sleep(10); // sleep x sec
+    }
+}
+
+void ServerImpl::ReBalanceTimer()
+{
+    while (true)
+    {
+        gSvrInfoMutex.lock();
+        Rebalance();
+        gSvrInfoMutex.unlock();
+
+        sleep(10);
+    }
+}
+
+void Rebalance()
+{
+    gRank2Score.clear();
+
+cout << "[" << __func__ << "]";
+    double rank = 0.0;
+    for (auto p = gSvrId2SvrInfo.begin();
+            p != gSvrId2SvrInfo.end(); ++p)
+    {
+cout << "svrId:" << p->first << " score:"
+    << p->second.score << endl;
+
+        ServerInfo& svrInfo = p->second;
+        rank += svrInfo.score;// deal with gRank2Score
+        gRank2Score[rank] = svrInfo.score;
+
+        if (abs(svrInfo.pScore2Producer->first -
+                svrInfo.score) > 0.0001)
+        {                 // deal with gScore2Producer
+            auto p = gScore2ProducerCaller.insert(
+                make_pair(svrInfo.score,
+                svrInfo.pScore2Producer->second));
+            gScore2ProducerCaller.erase(
+                    svrInfo.pScore2Producer);
+            svrInfo.pScore2Producer = p.first;
+        }
     }
 }
 
