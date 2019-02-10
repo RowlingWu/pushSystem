@@ -206,7 +206,7 @@ void ProducerSendCallBack::onException(MQException& e)
 {
     cout << "SendToBrokerException: " << e.what()
        << ". Retry sending...\n";
-    sleep(1);
+    sleep(2);
     AsyncProducerWorker(topic, body, callData);
 }
 
@@ -222,7 +222,7 @@ void AsyncProducerWorker(string& topic, string& body, ProduceMsgCallData* callDa
     catch (MQException& e)
     {
         cout << __func__ << " exception:" << e.what() << ".Retry sending..." << endl;
-        sleep(1);
+        sleep(2);
         AsyncProducerWorker(topic, body, callData);
     }
 }
