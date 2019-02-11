@@ -4,9 +4,12 @@ namespace daemon_server
 {
 
 map<uint64_t, ServerInfo> gSvrId2SvrInfo;
-map<double, ProducerCaller> gScore2ProducerCaller;
-map<double, double> gRank2Score;
 mutex gSvrInfoMutex;
+
+map<double, uint64_t> gRank2SvrId;
+unordered_map<uint64_t, ProducerState> gSvrId2ProducerState;
+set<uint64_t> gSetIdleProducer;
+
 CompletionQueue gCQ;
 uint64_t curUid = 0;
 atomic<uint32_t> sendingCount(0);
@@ -54,23 +57,18 @@ void ClientRegisterCallData::Proceed()
 
         if ("producer" == request_.proc_name())
         {
-            ProducerCaller producerCaller(
-                grpc::CreateChannel(
-                addr,
-                grpc::InsecureChannelCredentials()),
-                &gCQ);
-            double score = 10000.0;
-            if (!gScore2ProducerCaller.empty())
-            {
-                gScore2ProducerCaller.crbegin()->first;
-                score = gScore2ProducerCaller.crbegin()->first + 0.01;
-            }
+            double score = calLoadBalanceScore(0.0);
             iter2Ok.first->second.score = score;
-            auto score2ProducerCaller2Ok =
-                gScore2ProducerCaller.insert(make_pair(
-                        score, producerCaller
-            ));
-            iter2Ok.first->second.pScore2Producer = score2ProducerCaller2Ok.first;
+
+            ProducerState producerState(ProducerCaller(
+                grpc::CreateChannel(
+                    addr,
+                    grpc::InsecureChannelCredentials()), &gCQ),
+                0);
+            gSvrId2ProducerState[reply_.server_id()] =
+                producerState;
+            gSetIdleProducer.insert(reply_.server_id());
+
             Rebalance();
         }
 
@@ -102,9 +100,6 @@ void LoadBalanceCallData::Proceed()
     else if (status_ == PROCESS)
     {
         new LoadBalanceCallData(service_, cq_);
-cout << "[LoadBalanceCallData::" << __func__
-    << "]svrId:" << request_.server_id()
-    << " score:" << request_.score() << endl;
 
         reply_.set_err(common::SUCCESS);
         uint64_t serverId = request_.server_id();
@@ -112,6 +107,9 @@ cout << "[LoadBalanceCallData::" << __func__
         stringstream ssScore;
         ssScore << request_.score();
         ssScore >> score;
+cout << "[LoadBalanceCallData::" << __func__
+    << "]svrId:" << serverId
+    << " score:" << score << endl;
 
         gSvrInfoMutex.lock();
         auto pSvrId2SvrInfo = gSvrId2SvrInfo.find(serverId);
@@ -152,7 +150,6 @@ void HeartBeatCallData::Proceed()
     {
         new HeartBeatCallData(service_, cq_);
 
-cout << "Receive heartbeat from svrId " << request_.server_id() << endl;
         reply_.set_err(common::SUCCESS);
         gSvrInfoMutex.lock();
         auto it = gSvrId2SvrInfo.find(request_.server_id());
@@ -211,16 +208,31 @@ void ServerImpl::BeginPushCallData::NotifyProducers()
     for (curUid = request_.start_uid();
             curUid <= (uint64_t)request_.end_uid();)
     {
+        ProduceMsgRequest req;
+        req.set_msg_id(request_.msg_id());
+        req.set_start_uid(curUid);
+        req.set_end_uid(curUid + UID_COUNT_PER_TIME - 1);
         gSvrInfoMutex.lock();
-        uint32_t producerSize = gScore2ProducerCaller.size();
-        gSvrInfoMutex.unlock();
-        if (sendingCount.load() <= 3 * producerSize)
+        uint32_t producerSize = gSvrId2ProducerState.size();
+        if (!gSetIdleProducer.empty())
         {
 cout << "curUid:" << curUid << " endUid:" << (uint64_t)request_.end_uid() << endl;
-            ProduceMsgRequest req;
-            req.set_msg_id(request_.msg_id());
-            req.set_start_uid(curUid);
-            req.set_end_uid(curUid + UID_COUNT_PER_TIME - 1);
+            uint64_t svrId = *gSetIdleProducer.begin();
+            gSetIdleProducer.erase(gSetIdleProducer.begin());
+            ++sendingCount;
+            ProducerState& producerState =
+                gSvrId2ProducerState[svrId];
+            ++producerState.curTaskCount;
+            producerState.producerCaller.ProduceMsg(
+                    svrId, req);
+            gSvrInfoMutex.unlock();
+            curUid += UID_COUNT_PER_TIME;
+        }
+        else if (sendingCount.load() <=
+                3 * producerSize)
+        {
+cout << "curUid:" << curUid << " endUid:" << (uint64_t)request_.end_uid() << endl;
+            gSvrInfoMutex.unlock();
             ++sendingCount;
             serverImpl->SelectProducerAndSend(req);
             curUid += UID_COUNT_PER_TIME;
@@ -273,9 +285,10 @@ ProducerCaller& ProducerCaller::operator=(ProducerCaller& other)
     return *this;
 }
 
-void ProducerCaller::ProduceMsg(const ProduceMsgRequest& req)
+void ProducerCaller::ProduceMsg(const uint64_t svrId, const ProduceMsgRequest& req)
 {
-    ProduceMsgAsyncCall* call = new ProduceMsgAsyncCall;
+    ProduceMsgAsyncCall* call =
+        new ProduceMsgAsyncCall(svrId);
     call->request.CopyFrom(req);
     call->response_reader = stub_->PrepareAsyncProduceMsg(&call->context, req, cq_);
     call->response_reader->StartCall();
@@ -284,35 +297,44 @@ void ProducerCaller::ProduceMsg(const ProduceMsgRequest& req)
 
 void ProduceMsgAsyncCall::OnGetResponse(void* ptr)
 {
+    DecreaseProducerTask(svrId);
     ServerImpl& daemonServer = *((ServerImpl*)ptr);
 
-    cout << "produce msg reply(startUid:"
-        << request.start_uid() << "), err:"
-        << reply.err() << endl;
     if (reply.err() == common::SUCCESS)
     {
-        daemonServer.DecreaseSendingCount();
+        cout << "produce msg reply success(startUid:"
+            << request.start_uid() << "), svrId:"
+            << svrId << endl;
+        --sendingCount;
     }
     else
     {
-        cout << "get errCode. re-send.\n";
+        cout << "get errCode. re-send. svrId:"
+            << svrId << endl;
         sleep(1);
-        gSvrInfoMutex.lock();
         daemonServer.SelectProducerAndSend(request);
-        gSvrInfoMutex.unlock();
     }
 }
 
 void ProduceMsgAsyncCall::OnResponseFail(void* ptr)
 {
+    DecreaseProducerTask(svrId);
     ServerImpl& daemonServer = *((ServerImpl*)ptr);
-    cout << "send msg fail. re-send.\n";
+    cout << "send msg fail, svrId:" << svrId
+        << ". re-send.\n";
     sleep(1);
-    gSvrInfoMutex.lock();
     daemonServer.SelectProducerAndSend(request);
-    gSvrInfoMutex.unlock();
 }
 
+void DecreaseProducerTask(uint64_t svrId)
+{
+    gSvrInfoMutex.lock();
+    if (0 == --gSvrId2ProducerState[svrId].curTaskCount)
+    {
+        gSetIdleProducer.insert(svrId);
+    }
+    gSvrInfoMutex.unlock();
+}
 
 ServerImpl::~ServerImpl()
 {
@@ -339,35 +361,29 @@ void ServerImpl::SelectProducerAndSend(const ProduceMsgRequest& req)
     while (true)
     {
         gSvrInfoMutex.lock();
-        uint64_t producerSize = gScore2ProducerCaller.size();
-        if (producerSize)
+        if (!gSvrId2ProducerState.empty())
         {
             // Load balance policy
-            static const uint32_t factor = 1000000;
+            static const uint32_t factor = 10000;
             mt19937 rng;
             rng.seed(random_device()());
             uniform_int_distribution<mt19937::result_type> dist(0, factor);
             double randomRank = dist(rng) /
                 (double)factor *
-                gRank2Score.rbegin()->first;
-            double& score = gRank2Score.lower_bound(randomRank)->second;//lower_bound(key): not less than key
-cout << "[debug]score:" << score << endl;
-if (gRank2Score.lower_bound(randomRank) != gRank2Score.end())
-{
-    cout << "[debug]not gRank2Score.end\n";
-}
-            gScore2ProducerCaller[score].ProduceMsg(req);
+                gRank2SvrId.rbegin()->first;
+            uint64_t svrId = gRank2SvrId.lower_bound(randomRank)->second;//lower_bound(key): not less than key
+
+            ProducerState& producerState =
+                gSvrId2ProducerState[svrId];
+            ++producerState.curTaskCount;
+            producerState.producerCaller.ProduceMsg(
+                    svrId, req);
             gSvrInfoMutex.unlock();
             return;
         }
         gSvrInfoMutex.unlock();
         sleep(1);
     }
-}
-
-void ServerImpl::DecreaseSendingCount()
-{
-    --sendingCount;
 }
 
 void ServerImpl::HandleRpcs()
@@ -402,7 +418,8 @@ void ServerImpl::CheckProcAlive()
         for (auto it = gSvrId2SvrInfo.begin();
                 it != gSvrId2SvrInfo.end();)
         {
-            cout << "[" << __func__ << "]svrId:" << it->first
+            uint64_t svrId = it->first;
+            cout << "[" << __func__ << "]svrId:" << svrId
                 << " addr:" << it->second.address
                 << " procName:" << it->second.procName
                 << " grpId:" << it->second.groupId
@@ -411,11 +428,13 @@ void ServerImpl::CheckProcAlive()
             if (difftime(now, it->second.timestamp) > ALIVE_DURATION)
             {
                 cout << "server not alive, svrId:"
-                    << it->first << endl;
-                gScore2ProducerCaller.erase(
-                        it->second.pScore2Producer);
+                    << svrId << endl;
+                if ("producer" == it->second.procName)
+                {
+                    gSvrId2ProducerState.erase(svrId);
+                    Rebalance();
+                }
                 it = gSvrId2SvrInfo.erase(it);
-                Rebalance();
                 continue;
             }
             ++it;
@@ -440,30 +459,19 @@ void ServerImpl::ReBalanceTimer()
 
 void Rebalance()
 {
-    gRank2Score.clear();
+    gRank2SvrId.clear();
 
 cout << "[" << __func__ << "]";
     double rank = 0.0;
     for (auto p = gSvrId2SvrInfo.begin();
             p != gSvrId2SvrInfo.end(); ++p)
     {
-cout << "svrId:" << p->first << " score:"
-    << p->second.score << endl;
+        uint64_t svrId = p->first;
+        double score = p->second.score;
+cout << "svrId:" << svrId << " score:" << score << endl;
 
-        ServerInfo& svrInfo = p->second;
-        rank += svrInfo.score;// deal with gRank2Score
-        gRank2Score[rank] = svrInfo.score;
-
-        if (abs(svrInfo.pScore2Producer->first -
-                svrInfo.score) > 0.0001)
-        {                 // deal with gScore2Producer
-            auto p = gScore2ProducerCaller.insert(
-                make_pair(svrInfo.score,
-                svrInfo.pScore2Producer->second));
-            gScore2ProducerCaller.erase(
-                    svrInfo.pScore2Producer);
-            svrInfo.pScore2Producer = p.first;
-        }
+        rank += score;
+        gRank2SvrId[rank] = svrId;
     }
 }
 

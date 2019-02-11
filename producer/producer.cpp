@@ -206,7 +206,7 @@ void ProducerSendCallBack::onException(MQException& e)
 {
     cout << "SendToBrokerException: " << e.what()
        << ". Retry sending...\n";
-    sleep(2);
+    sleep(3);
     AsyncProducerWorker(topic, body, callData);
 }
 
@@ -222,7 +222,7 @@ void AsyncProducerWorker(string& topic, string& body, ProduceMsgCallData* callDa
     catch (MQException& e)
     {
         cout << __func__ << " exception:" << e.what() << ".Retry sending..." << endl;
-        sleep(2);
+        sleep(3);
         AsyncProducerWorker(topic, body, callData);
     }
 }
@@ -294,21 +294,10 @@ void ProducerImpl::SendLoadBalanceInfo()
 cout << "[" << __func__ << "]totalTasks:" << totalTasks
     << " avgTime:" << avgTime << endl;
         stringstream ssScore;   // get score
-        if (0 == totalTasks)
-        {
-            req.set_score("0.0");
-        }
-        else if (avgTime < 0.001)
-        {
-            ssScore << DBL_MAX;
-            req.set_score(ssScore.str());
-        }
-        else
-        {
-            double score = (double)totalTasks / avgTime * 10000;
-            ssScore << score;
-            req.set_score(ssScore.str());
-        }
+        double score = calLoadBalanceScore(avgTime);
+        ssScore << score;
+        req.set_score(ssScore.str());
+
         avgTime = 0.0;        // reset score
         totalTasks = 0;
         loadBalanceMutex.unlock();

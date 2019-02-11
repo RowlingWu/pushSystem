@@ -9,6 +9,8 @@
 #include <ctime>
 #include <unistd.h>
 #include <map>
+#include <unordered_map>
+#include <set>
 #include <cmath>
 #include <random>
 #include <sstream>
@@ -22,6 +24,7 @@
 #include "../common/errCode.h"
 #include "../common/handler_interface.h"
 #include "../common/daemonClient/daemonClient.h"
+#include "../common/common.h"
 
 using grpc::Server;
 using grpc::ServerAsyncResponseWriter;
@@ -47,7 +50,7 @@ public:
     ProducerCaller(ProducerCaller& other);
     ProducerCaller(const ProducerCaller& other);
     explicit ProducerCaller(shared_ptr<Channel> channel, CompletionQueue* cq);
-    void ProduceMsg(const ProduceMsgRequest& req);
+    void ProduceMsg(const uint64_t svrId, const ProduceMsgRequest& req);
     ProducerCaller& operator=(ProducerCaller& other);
 
 private:
@@ -62,9 +65,8 @@ struct ServerInfo
     uint32_t groupId;
     time_t timestamp;
     double score;  // load balance info
-    map<double, ProducerCaller>::iterator pScore2Producer;
-    ServerInfo(): groupId(0), timestamp(0), score(0.0), pScore2Producer(NULL) {}
-    ServerInfo(string addr, string proc, uint32_t grp, time_t ts): address(addr), procName(proc), groupId(grp), timestamp(ts), score(0.0), pScore2Producer(NULL) {}
+    ServerInfo(): groupId(0), timestamp(0), score(0.0) {}
+    ServerInfo(string addr, string proc, uint32_t grp, time_t ts): address(addr), procName(proc), groupId(grp), timestamp(ts), score(0.0) {}
 };
 
 extern map<uint64_t, ServerInfo> gSvrId2SvrInfo;
@@ -123,7 +125,6 @@ public:
     virtual ~ServerImpl();
     void Run();
     void SelectProducerAndSend(const ProduceMsgRequest& req);
-    void DecreaseSendingCount();
 
 private:
     void HandleRpcs();
@@ -159,16 +160,34 @@ private:
     static const double ALIVE_DURATION; // sec
 };
 
-extern map<double, ProducerCaller> gScore2ProducerCaller;
-extern map<double, double> gRank2Score;
-extern void Rebalance();
 
+struct ProducerState
+{
+    ProducerCaller producerCaller;
+    uint32_t curTaskCount;
+    ProducerState() : curTaskCount(0) {}
+    ProducerState(ProducerCaller pc, uint32_t n) : producerCaller(pc), curTaskCount(n) {}
+    ProducerState& operator=(ProducerState& other)
+    {
+        producerCaller = other.producerCaller;
+        curTaskCount = other.curTaskCount;
+        return *this;
+    }
+};
+extern unordered_map<uint64_t, ProducerState> gSvrId2ProducerState;
+extern set<uint64_t> gSetIdleProducer;
+extern map<double, uint64_t> gRank2SvrId;
+
+extern void Rebalance();
+extern void DecreaseProducerTask(uint64_t svrId);
 
 struct ProduceMsgAsyncCall : public daemon_client::AsyncCall
 {
+    uint64_t svrId;
     ProduceMsgRequest request;
     ProduceMsgReply reply;
     unique_ptr<ClientAsyncResponseReader<ProduceMsgReply>> response_reader;
+    ProduceMsgAsyncCall(uint64_t id) : svrId(id) {}
     void OnGetResponse(void*);
     void OnResponseFail(void*);
 };
