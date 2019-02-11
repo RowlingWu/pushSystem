@@ -14,4 +14,6 @@ extern string genReleaseKey(const char* c);
 extern string genTempKey(const char* c);
 extern string genDiffKey(const char* c);
 
+extern double calLoadBalanceScore(double avgTime);
+
 #endif
