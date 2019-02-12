@@ -76,6 +76,7 @@ private:
 extern TpsReportService gTps;
 extern RocketmqSendAndConsumerArgs gMQInfo;
 extern DefaultMQProducer gMQProducer;
+extern mutex gMQProducerMtx;
 
 class ProducerSendCallBack : public AutoDeleteSendCallBack
 {

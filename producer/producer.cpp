@@ -35,6 +35,7 @@ namespace producer
 TpsReportService gTps;
 RocketmqSendAndConsumerArgs gMQInfo;
 DefaultMQProducer gMQProducer("rename_group_name");
+mutex gMQProducerMtx;
 const int BITS_PER_BYTE = 8;
 
 ProduceMsgCallData::ProduceMsgCallData(Producer::AsyncService* service, ServerCompletionQueue* cq, ProducerImpl* p) :
@@ -217,7 +218,9 @@ void AsyncProducerWorker(string& topic, string& body, ProduceMsgCallData* callDa
             body); // body
     try
     {
+        gMQProducerMtx.lock();
         gMQProducer.send(msg, new ProducerSendCallBack(callData, topic, body));
+        gMQProducerMtx.unlock();
     }
     catch (MQException& e)
     {
