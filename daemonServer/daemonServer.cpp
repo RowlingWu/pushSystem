@@ -14,7 +14,7 @@ CompletionQueue gCQ;
 uint64_t curUid = 0;
 atomic<uint32_t> sendingCount(0);
 
-const uint64_t UID_COUNT_PER_TIME = 1024;
+const uint64_t UID_COUNT_PER_TIME = 4096;
 
 const double ServerImpl::ALIVE_DURATION = 10; // sec
 
@@ -212,11 +212,11 @@ void ServerImpl::BeginPushCallData::NotifyProducers()
         req.set_msg_id(request_.msg_id());
         req.set_start_uid(curUid);
         req.set_end_uid(curUid + UID_COUNT_PER_TIME - 1);
+
         gSvrInfoMutex.lock();
         uint32_t producerSize = gSvrId2ProducerState.size();
         if (!gSetIdleProducer.empty())
         {
-cout << "curUid:" << curUid << " endUid:" << (uint64_t)request_.end_uid() << endl;
             uint64_t svrId = *gSetIdleProducer.begin();
             gSetIdleProducer.erase(gSetIdleProducer.begin());
             ++sendingCount;
@@ -227,11 +227,12 @@ cout << "curUid:" << curUid << " endUid:" << (uint64_t)request_.end_uid() << end
                     svrId, req);
             gSvrInfoMutex.unlock();
             curUid += UID_COUNT_PER_TIME;
+cout << "[" << __func__ << "(idle)]curUid:" << curUid << " endUid:"
+    << (uint64_t)request_.end_uid() << " svrId:" << svrId << endl;
         }
         else if (sendingCount.load() <=
                 3 * producerSize)
         {
-cout << "curUid:" << curUid << " endUid:" << (uint64_t)request_.end_uid() << endl;
             gSvrInfoMutex.unlock();
             ++sendingCount;
             serverImpl->SelectProducerAndSend(req);
@@ -239,6 +240,7 @@ cout << "curUid:" << curUid << " endUid:" << (uint64_t)request_.end_uid() << end
         }
         else
         {
+            gSvrInfoMutex.unlock();
             usleep(10000);
         }
     }
@@ -379,6 +381,9 @@ void ServerImpl::SelectProducerAndSend(const ProduceMsgRequest& req)
             producerState.producerCaller.ProduceMsg(
                     svrId, req);
             gSvrInfoMutex.unlock();
+cout << "[" << __func__ << "]curUid:" << req.start_uid()
+    << " endUid:" << req.end_uid() << " svrId:"
+    << svrId << " randomRank:" << randomRank << endl;
             return;
         }
         gSvrInfoMutex.unlock();
@@ -468,9 +473,12 @@ cout << "[" << __func__ << "]";
     {
         uint64_t svrId = p->first;
         double score = p->second.score;
-cout << "svrId:" << svrId << " score:" << score << endl;
 
         rank += score;
+cout << "svrId:" << svrId << " score:" << score
+    << " rank:" << rank << " curTask:"
+    << gSvrId2ProducerState[p->first].curTaskCount
+    << endl;
         gRank2SvrId[rank] = svrId;
     }
 }
