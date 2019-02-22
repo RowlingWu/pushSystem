@@ -434,12 +434,13 @@ void ServerImpl::CheckProcAlive()
             {
                 cout << "server not alive, svrId:"
                     << svrId << endl;
-                if ("producer" == it->second.procName)
+                string procName = it->second.procName;
+                it = gSvrId2SvrInfo.erase(it);
+                if ("producer" == procName)
                 {
                     gSvrId2ProducerState.erase(svrId);
                     Rebalance();
                 }
-                it = gSvrId2SvrInfo.erase(it);
                 continue;
             }
             ++it;
@@ -466,7 +467,6 @@ void Rebalance()
 {
     gRank2SvrId.clear();
 
-cout << "[" << __func__ << "]";
     double rank = 0.0;
     for (auto p = gSvrId2SvrInfo.begin();
             p != gSvrId2SvrInfo.end(); ++p)
@@ -475,7 +475,8 @@ cout << "[" << __func__ << "]";
         double score = p->second.score;
 
         rank += score;
-cout << "svrId:" << svrId << " score:" << score
+cout << "[" << __func__ << "]svrId:"
+    << svrId << " score:" << score
     << " rank:" << rank << " curTask:"
     << gSvrId2ProducerState[p->first].curTaskCount
     << endl;
