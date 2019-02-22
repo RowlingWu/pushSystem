@@ -181,6 +181,7 @@ int32_t ProduceMsgCallData::ProduceMsg(uint32_t msgId, uint64_t startUid, uint64
             msg.set_msg_id(msgId);
             string body;
             msg.SerializeToString(&body);
+            usleep(500);// send msg too frequently will lead to dead lock
             AsyncProducerWorker(gMQInfo.topic, body, this);
         }
     }
@@ -207,7 +208,7 @@ void ProducerSendCallBack::onException(MQException& e)
 {
     cout << "SendToBrokerException: " << e.what()
        << ". Retry sending...\n";
-    sleep(3);
+    sleep(1);
     AsyncProducerWorker(topic, body, callData);
 }
 
