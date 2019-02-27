@@ -11,7 +11,6 @@ unordered_map<uint64_t, ProducerState> gSvrId2ProducerState;
 set<uint64_t> gSetIdleProducer;
 
 CompletionQueue gCQ;
-uint64_t curUid = 0;
 atomic<uint32_t> sendingCount(0);
 
 const uint64_t UID_COUNT_PER_TIME = 4096;
@@ -192,7 +191,16 @@ void ServerImpl::BeginPushCallData::Proceed()
     else if (status_ == PROCESS)
     {
         new BeginPushCallData(service_, cq_, serverImpl);
-        NotifyProducers();
+        cout << "get beginPush call\n";
+        ProduceMsgRequest req;
+        req.set_msg_id(request_.msg_id());
+        req.set_start_uid(request_.start_uid());
+        req.set_end_uid(request_.end_uid());
+        serverImpl->SelectProducerAndSend(req);
+
+        status_ = FINISH;
+        reply_.set_err(common::SUCCESS);
+        responder_.Finish(reply_, Status::OK, this);
     }
     else
     {
@@ -201,15 +209,13 @@ void ServerImpl::BeginPushCallData::Proceed()
     }
 }
 
-void ServerImpl::BeginPushCallData::NotifyProducers()
+void ServerImpl::SelectProducerAndSend(const ProduceMsgRequest& request)
 {
-    cout << "get beginPush call\n";
-
-    for (curUid = request_.start_uid();
-            curUid <= (uint64_t)request_.end_uid();)
+    for (uint64_t curUid = request.start_uid();
+            curUid <= (uint64_t)request.end_uid();)
     {
         ProduceMsgRequest req;
-        req.set_msg_id(request_.msg_id());
+        req.set_msg_id(request.msg_id());
         req.set_start_uid(curUid);
         req.set_end_uid(curUid + UID_COUNT_PER_TIME - 1);
 
@@ -227,15 +233,33 @@ void ServerImpl::BeginPushCallData::NotifyProducers()
                     svrId, req);
             gSvrInfoMutex.unlock();
             curUid += UID_COUNT_PER_TIME;
-cout << "[" << __func__ << "(idle)]curUid:" << curUid << " endUid:"
-    << (uint64_t)request_.end_uid() << " svrId:" << svrId << endl;
+cout << "[" << __func__ << "(idle)]curUid:" << curUid
+    << " endUid:" << (uint64_t)req.end_uid()
+    << " svrId:" << svrId << endl;
         }
         else if (sendingCount.load() <=
-                3 * producerSize)
+                3 * producerSize &&
+                producerSize != 0)
         {
-            gSvrInfoMutex.unlock();
             ++sendingCount;
-            serverImpl->SelectProducerAndSend(req);
+            static const uint32_t factor = 10000;
+            mt19937 rng;
+            rng.seed(random_device()());
+            uniform_int_distribution<mt19937::result_type> dist(0, factor);
+            double randomRank = dist(rng) /
+                (double)factor *
+                gRank2SvrId.rbegin()->first;
+            uint64_t svrId = gRank2SvrId.lower_bound(randomRank)->second;//lower_bound(key): not less than key
+
+            ProducerState& producerState =
+                gSvrId2ProducerState[svrId];
+            ++producerState.curTaskCount;
+            producerState.producerCaller.ProduceMsg(
+                    svrId, req);
+            gSvrInfoMutex.unlock();
+cout << "[" << __func__ << "]curUid:" << req.start_uid()
+    << " endUid:" << req.end_uid() << " svrId:"
+    << svrId << " randomRank:" << randomRank << endl;
             curUid += UID_COUNT_PER_TIME;
         }
         else
@@ -244,9 +268,6 @@ cout << "[" << __func__ << "(idle)]curUid:" << curUid << " endUid:"
             usleep(10000);
         }
     }
-
-    status_ = FINISH;
-    responder_.Finish(reply_, Status::OK, this);
 }
 
 string parseAndGetIp(const string& peer)
@@ -356,39 +377,6 @@ void ServerImpl::Run()
     cout << "server listening on " << serverAddress << endl;
 
     HandleRpcs();
-}
-
-void ServerImpl::SelectProducerAndSend(const ProduceMsgRequest& req)
-{
-    while (true)
-    {
-        gSvrInfoMutex.lock();
-        if (!gSvrId2ProducerState.empty())
-        {
-            // Load balance policy
-            static const uint32_t factor = 10000;
-            mt19937 rng;
-            rng.seed(random_device()());
-            uniform_int_distribution<mt19937::result_type> dist(0, factor);
-            double randomRank = dist(rng) /
-                (double)factor *
-                gRank2SvrId.rbegin()->first;
-            uint64_t svrId = gRank2SvrId.lower_bound(randomRank)->second;//lower_bound(key): not less than key
-
-            ProducerState& producerState =
-                gSvrId2ProducerState[svrId];
-            ++producerState.curTaskCount;
-            producerState.producerCaller.ProduceMsg(
-                    svrId, req);
-            gSvrInfoMutex.unlock();
-cout << "[" << __func__ << "]curUid:" << req.start_uid()
-    << " endUid:" << req.end_uid() << " svrId:"
-    << svrId << " randomRank:" << randomRank << endl;
-            return;
-        }
-        gSvrInfoMutex.unlock();
-        sleep(1);
-    }
 }
 
 void ServerImpl::HandleRpcs()

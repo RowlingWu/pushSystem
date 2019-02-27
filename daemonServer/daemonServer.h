@@ -74,7 +74,6 @@ extern mutex gSvrInfoMutex;
 
 extern CompletionQueue gCQ;
 
-extern uint64_t curUid;
 extern atomic<uint32_t> sendingCount;
 
 extern const uint64_t UID_COUNT_PER_TIME;
@@ -124,7 +123,7 @@ class ServerImpl
 public:
     virtual ~ServerImpl();
     void Run();
-    void SelectProducerAndSend(const ProduceMsgRequest& req);
+    void SelectProducerAndSend(const ProduceMsgRequest& request);
 
 private:
     void HandleRpcs();
@@ -137,7 +136,6 @@ private:
     public:
         BeginPushCallData(DaemonServer::AsyncService* service, ServerCompletionQueue* cq, ServerImpl* ptr);
         void Proceed();
-        void NotifyProducers();
 
     private:
         DaemonServer::AsyncService* service_;
