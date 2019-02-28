@@ -1,7 +1,5 @@
 *.pb.*
 *.o
-producer
-consumer
 daemon_server
 start_push
 user_info_update
