@@ -27,5 +27,5 @@ string genDiffKey(const char* c)
 
 double calLoadBalanceScore(double avgTime)
 {
-    return 10.0 * 500.0 / (avgTime + 500.0);
+    return 10.0 * 7.0 / (avgTime + 7.0);
 }

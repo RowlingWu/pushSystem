@@ -77,20 +77,21 @@ void ProduceMsgCallData::NotifyOne()
     --waitForSendCount;
     if (0 == waitForSendCount)
     {
-cout << "Finish producing msg. Notify daemon. startUid:" << request_.start_uid()
+cout << "Finish producing msg. Notify daemon. startUid:"
+    << request_.start_uid()
     << " endUid:" << request_.end_uid() << endl;
         status_ = FINISH;
         reply_.set_err(common::SUCCESS);
         responder_.Finish(reply_, Status::OK, this);
-        endTime = chrono::high_resolution_clock::now();
-        pProducerImpl->CalLoadBalanceInfo(startTime, endTime);
+        //endTime = chrono::high_resolution_clock::now();
+        //pProducerImpl->CalLoadBalanceInfo(startTime, endTime);
     }
     waitForSndCntMtx.unlock();
 }
 
 int32_t ProduceMsgCallData::ProduceMsg(uint32_t msgId, uint64_t startUid, uint64_t endUid)
 {
-    startTime = chrono::high_resolution_clock::now();
+    //startTime = chrono::high_resolution_clock::now();
 
     redisMtx.lock();
     // Check KEY exists
@@ -190,8 +191,8 @@ int32_t ProduceMsgCallData::ProduceMsg(uint32_t msgId, uint64_t startUid, uint64
         status_ = FINISH;
         reply_.set_err(common::SUCCESS);
         responder_.Finish(reply_, Status::OK, this);
-        endTime = chrono::high_resolution_clock::now();
-        pProducerImpl->CalLoadBalanceInfo(startTime, endTime);
+        //endTime = chrono::high_resolution_clock::now();
+        //pProducerImpl->CalLoadBalanceInfo(startTime, endTime);
     }
     return common::SUCCESS;
 }
@@ -219,9 +220,7 @@ void AsyncProducerWorker(string& topic, string& body, ProduceMsgCallData* callDa
             body); // body
     try
     {
-        gMQProducerMtx.lock();
         gMQProducer.send(msg, new ProducerSendCallBack(callData, topic, body));
-        gMQProducerMtx.unlock();
     }
     catch (MQException& e)
     {
@@ -247,13 +246,13 @@ void InitProducer()
 
 
 ProducerImpl::ProducerImpl(shared_ptr<Channel> channel) :
-    stub_(DaemonServer::NewStub(channel)),
-    totalTasks(0), avgTime(0.0)
+    stub_(DaemonServer::NewStub(channel))
+    //totalTasks(0), avgTime(0.0)
 {
     handleCallBackThread_ = thread(&common::AsyncCompleteRpc, this, &cq_);
 }
 
-void ProducerImpl::CalLoadBalanceInfo(chrono::time_point<chrono::high_resolution_clock>& startTime, chrono::time_point<chrono::high_resolution_clock> endTime)
+/*void ProducerImpl::CalLoadBalanceInfo(chrono::time_point<chrono::high_resolution_clock>& startTime, chrono::time_point<chrono::high_resolution_clock> endTime)
 {
     loadBalanceMutex.lock();
 
@@ -262,7 +261,7 @@ void ProducerImpl::CalLoadBalanceInfo(chrono::time_point<chrono::high_resolution
     avgTime = (totalTasks - 1) * avgTime / totalTasks + usedTime / totalTasks;
 
     loadBalanceMutex.unlock();
-}
+}*/
 
 void ProducerImpl::LoadBalanceAsyncCall::OnGetResponse(void*)
 {
@@ -294,17 +293,18 @@ void ProducerImpl::SendLoadBalanceInfo()
             continue;
         }
 
-        loadBalanceMutex.lock();
-cout << "[" << __func__ << "]totalTasks:" << totalTasks
-    << " avgTime:" << avgTime << endl;
+        //loadBalanceMutex.lock();
+        double avgTime = gTps.GetAvgSpeed();
+cout << "[" << __func__ << "]avgTime:" << avgTime
+    << endl;
         stringstream ssScore;   // get score
         double score = calLoadBalanceScore(avgTime);
         ssScore << score;
         req.set_score(ssScore.str());
 
-        avgTime = 0.0;        // reset score
-        totalTasks = 0;
-        loadBalanceMutex.unlock();
+        //avgTime = 0.0;        // reset score
+        //totalTasks = 0;
+        //loadBalanceMutex.unlock();
 
         LoadBalance(req);
     }

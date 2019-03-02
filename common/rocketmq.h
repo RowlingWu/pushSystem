@@ -61,12 +61,16 @@ class RocketmqSendAndConsumerArgs {
   bool PrintMoreInfo;
 };
 
+const uint32_t TPS_INTERVAL = 10;
 class TpsReportService {
  public:
-  TpsReportService() : tps_interval_(10), quit_flag_(false), tps_count_(0), total_count_(0) {}
+  TpsReportService() : tps_interval_(TPS_INTERVAL),
+    quit_flag_(false), tps_count_(0), total_count_(0),
+    avg_speed_(0.0) {}
   void start() {
     tps_thread_.reset(
-        new boost::thread(boost::bind(&TpsReportService::TpsReport, this)));
+        new boost::thread(boost::bind(
+                &TpsReportService::TpsReport, this)));
   }
 
   ~TpsReportService() {
@@ -79,12 +83,28 @@ class TpsReportService {
   void TpsReport() {
     while (!quit_flag_.load()) {
       boost::this_thread::sleep_for(tps_interval_);
-      total_count_.store(total_count_.load() + tps_count_.load());
-      std::cout << "tps: " << tps_count_.load() << " per " << tps_interval_ << " sec. "
-          << "total counts:" << total_count_.load() << endl;
+
+      long tpsCount = tps_count_.load();
+      total_count_.store(total_count_.load()
+              + tpsCount);
+      std::cout << "tps: " << tpsCount
+          << " per " << tps_interval_ << " sec. "
+          << "total counts:" << total_count_.load()
+          << endl;
+      if (!tpsCount)
+      {
+          avg_speed_.store(0);
+      }
+      else
+      {
+        avg_speed_.store(1000 * (double)TPS_INTERVAL /
+            tpsCount);
+      }
       tps_count_.store(0);
     }
   }
+
+  double GetAvgSpeed() { return avg_speed_.load(); }
 
  private:
   boost::chrono::seconds tps_interval_;
@@ -92,6 +112,7 @@ class TpsReportService {
   boost::atomic<bool> quit_flag_;
   boost::atomic<long> tps_count_;
   boost::atomic<uint64_t> total_count_;
+  boost::atomic<double> avg_speed_;
 };
 
 extern void PrintResult(rocketmq::SendResult* result);
