@@ -415,8 +415,6 @@ void ServerImpl::CheckProcAlive()
             cout << "[" << __func__ << "]svrId:" << svrId
                 << " addr:" << it->second.address
                 << " procName:" << it->second.procName
-                << " grpId:" << it->second.groupId
-                << " timestamp:" << it->second.timestamp
                 << endl;
             if (difftime(now, it->second.timestamp) > ALIVE_DURATION)
             {
@@ -427,6 +425,7 @@ void ServerImpl::CheckProcAlive()
                 if ("producer" == procName)
                 {
                     gSvrId2ProducerState.erase(svrId);
+                    gSetIdleProducer.erase(svrId);
                     Rebalance();
                 }
                 continue;
