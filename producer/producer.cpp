@@ -182,7 +182,7 @@ int32_t ProduceMsgCallData::ProduceMsg(uint32_t msgId, uint64_t startUid, uint64
             msg.set_msg_id(msgId);
             string body;
             msg.SerializeToString(&body);
-            usleep(800);// send msg too frequently will lead to dead lock
+            //usleep(800);// send msg too frequently will lead to dead lock
             AsyncProducerWorker(gMQInfo.topic, body, this);
         }
     }
