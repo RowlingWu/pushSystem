@@ -1,6 +1,4 @@
 CXX = g++ -I/home/l/grpc/include -I. -I/home/l/rocketmq-client-cpp/include
-#/usr/local/include/rocketmq
-
 CPPFLAGS += `pkg-config --cflags protobuf grpc`
 CXXFLAGS += -std=c++11
 LDFLAGS += -L/usr/local/lib -L/home/l/grpc/libs/opt -L/usr/local/lib\
@@ -11,10 +9,10 @@ LDFLAGS += -L/usr/local/lib -L/home/l/grpc/libs/opt -L/usr/local/lib\
 SRC = ../common/*.cpp ../common/daemonClient/daemonClient.cpp \
 	  *.cpp gen-cpp/*.cc
 
-all: consumer
+all: consumerd
 
-consumer:
+consumerd:
 	$(CXX) $(CXXFLAGS) $(SRC) $(LDFLAGS) -o $@
 
 clean:
-	rm consumer gen-cpp -rf
+	rm consumerd gen-cpp -rf

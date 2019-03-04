@@ -1,6 +1,8 @@
 *.pb.*
 *.o
 daemon_server
+producerd
+consumerd
 start_push
 user_info_update
 dump.rdb
