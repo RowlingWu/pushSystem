@@ -36,6 +36,7 @@ TpsReportService gTps;
 RocketmqSendAndConsumerArgs gMQInfo;
 DefaultMQProducer gMQProducer("rename_group_name");
 mutex gMQProducerMtx;
+atomic<int32_t> taskCount(0);
 const int BITS_PER_BYTE = 8;
 
 ProduceMsgCallData::ProduceMsgCallData(Producer::AsyncService* service, ServerCompletionQueue* cq, ProducerImpl* p) :
@@ -62,6 +63,7 @@ void ProduceMsgCallData::Proceed()
             << " startUid:" << request_.start_uid()
             << " endUid:" << request_.end_uid() << endl;
 
+        ++taskCount;
         ProduceMsg(request_.msg_id(), request_.start_uid(), request_.end_uid());
     }
     else
@@ -77,22 +79,19 @@ void ProduceMsgCallData::NotifyOne()
     --waitForSendCount;
     if (0 == waitForSendCount)
     {
+        --taskCount;
 cout << "Finish producing msg. Notify daemon. startUid:"
     << request_.start_uid()
     << " endUid:" << request_.end_uid() << endl;
         status_ = FINISH;
         reply_.set_err(common::SUCCESS);
         responder_.Finish(reply_, Status::OK, this);
-        //endTime = chrono::high_resolution_clock::now();
-        //pProducerImpl->CalLoadBalanceInfo(startTime, endTime);
     }
     waitForSndCntMtx.unlock();
 }
 
 int32_t ProduceMsgCallData::ProduceMsg(uint32_t msgId, uint64_t startUid, uint64_t endUid)
 {
-    //startTime = chrono::high_resolution_clock::now();
-
     redisMtx.lock();
     // Check KEY exists
     string cmd = "EXISTS " + TMP_USER_INFO_KEY;
@@ -182,7 +181,6 @@ int32_t ProduceMsgCallData::ProduceMsg(uint32_t msgId, uint64_t startUid, uint64
             msg.set_msg_id(msgId);
             string body;
             msg.SerializeToString(&body);
-            //usleep(800);// send msg too frequently will lead to dead lock
             AsyncProducerWorker(gMQInfo.topic, body, this);
         }
     }
@@ -191,8 +189,6 @@ int32_t ProduceMsgCallData::ProduceMsg(uint32_t msgId, uint64_t startUid, uint64
         status_ = FINISH;
         reply_.set_err(common::SUCCESS);
         responder_.Finish(reply_, Status::OK, this);
-        //endTime = chrono::high_resolution_clock::now();
-        //pProducerImpl->CalLoadBalanceInfo(startTime, endTime);
     }
     return common::SUCCESS;
 }
@@ -208,7 +204,13 @@ void ProducerSendCallBack::onSuccess(SendResult& result)
 void ProducerSendCallBack::onException(MQException& e)
 {
     cout << "SendToBrokerException: " << e.what()
-       << ". Retry sending...\n";
+       << "\n";
+    thread t = thread(&RetrySending, topic, body, callData);
+    t.detach();
+}
+
+void RetrySending(string topic, string body, ProduceMsgCallData* callData)
+{
     sleep(1);
     AsyncProducerWorker(topic, body, callData);
 }
@@ -225,7 +227,7 @@ void AsyncProducerWorker(string& topic, string& body, ProduceMsgCallData* callDa
     catch (MQException& e)
     {
         cout << __func__ << " exception:" << e.what() << ".Retry sending..." << endl;
-        sleep(3);
+        sleep(1);
         AsyncProducerWorker(topic, body, callData);
     }
 }
@@ -247,21 +249,9 @@ void InitProducer()
 
 ProducerImpl::ProducerImpl(shared_ptr<Channel> channel) :
     stub_(DaemonServer::NewStub(channel))
-    //totalTasks(0), avgTime(0.0)
 {
     handleCallBackThread_ = thread(&common::AsyncCompleteRpc, this, &cq_);
 }
-
-/*void ProducerImpl::CalLoadBalanceInfo(chrono::time_point<chrono::high_resolution_clock>& startTime, chrono::time_point<chrono::high_resolution_clock> endTime)
-{
-    loadBalanceMutex.lock();
-
-    ++totalTasks;
-    double usedTime = chrono::duration<double, milli>(endTime - startTime).count();
-    avgTime = (totalTasks - 1) * avgTime / totalTasks + usedTime / totalTasks;
-
-    loadBalanceMutex.unlock();
-}*/
 
 void ProducerImpl::LoadBalanceAsyncCall::OnGetResponse(void*)
 {
@@ -293,18 +283,23 @@ void ProducerImpl::SendLoadBalanceInfo()
             continue;
         }
 
-        //loadBalanceMutex.lock();
         double avgTime = gTps.GetAvgSpeed();
-cout << "[" << __func__ << "]avgTime:" << avgTime
-    << endl;
         stringstream ssScore;   // get score
-        double score = calLoadBalanceScore(avgTime);
+        double score;
+        int32_t curTaskCount = taskCount.load();
+        if (avgTime < 0.0001 && curTaskCount)
+        { // producer may not be able to produce msg
+            score = 0.0001;
+        }
+        else
+        {
+            score = calLoadBalanceScore(avgTime);
+        }
         ssScore << score;
         req.set_score(ssScore.str());
-
-        //avgTime = 0.0;        // reset score
-        //totalTasks = 0;
-        //loadBalanceMutex.unlock();
+cout << "[" << __func__ << "]avgTime:" << avgTime
+    << " score:" << score
+    << " curTaskCount:" << curTaskCount << endl;
 
         LoadBalance(req);
     }

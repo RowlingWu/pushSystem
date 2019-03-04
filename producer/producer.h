@@ -25,7 +25,6 @@ class ProducerImpl
 public:
     explicit ProducerImpl(shared_ptr<Channel> channel);
     void SendLoadBalanceInfo();
-    //void CalLoadBalanceInfo(chrono::time_point<chrono::high_resolution_clock>& startTime, chrono::time_point<chrono::high_resolution_clock> endTime);
 
 private:
     void LoadBalance(LoadBalanceRequest& req);
@@ -39,10 +38,6 @@ private:
     };
 
 private:
-    /*mutex loadBalanceMutex;
-    uint64_t totalTasks;
-    double avgTime;*/
-
     unique_ptr<DaemonServer::Stub> stub_;
     CompletionQueue cq_;
     thread handleCallBackThread_;
@@ -67,8 +62,6 @@ private:
     uint32_t waitForSendCount;
     mutex waitForSndCntMtx;
 
-    //chrono::time_point<chrono::high_resolution_clock> startTime;
-    //chrono::time_point<chrono::high_resolution_clock> endTime;
     ProducerImpl* pProducerImpl;
 };
 
@@ -77,6 +70,8 @@ extern TpsReportService gTps;
 extern RocketmqSendAndConsumerArgs gMQInfo;
 extern DefaultMQProducer gMQProducer;
 extern mutex gMQProducerMtx;
+
+extern atomic<int32_t> taskCount;
 
 class ProducerSendCallBack : public AutoDeleteSendCallBack
 {
@@ -92,6 +87,7 @@ private:
 
 void InitProducer();
 void AsyncProducerWorker(string& topic, string& body, ProduceMsgCallData* callData);
+void RetrySending(string topic, string body, ProduceMsgCallData* callData);
 
 extern const int BITS_PER_BYTE;
 

@@ -233,7 +233,7 @@ void ServerImpl::SelectProducerAndSend(const ProduceMsgRequest& request)
                     svrId, req);
             gSvrInfoMutex.unlock();
             curUid += UID_COUNT_PER_TIME;
-cout << "[" << __func__ << "(idle)]curUid:" << curUid
+cout << "[" << __func__ << "(idle)]curUid:" << req.start_uid()
     << " endUid:" << (uint64_t)req.end_uid()
     << " svrId:" << svrId << endl;
         }
@@ -257,10 +257,10 @@ cout << "[" << __func__ << "(idle)]curUid:" << curUid
             producerState.producerCaller.ProduceMsg(
                     svrId, req);
             gSvrInfoMutex.unlock();
+            curUid += UID_COUNT_PER_TIME;
 cout << "[" << __func__ << "]curUid:" << req.start_uid()
     << " endUid:" << req.end_uid() << " svrId:"
     << svrId << " randomRank:" << randomRank << endl;
-            curUid += UID_COUNT_PER_TIME;
         }
         else
         {
@@ -328,7 +328,6 @@ void ProduceMsgAsyncCall::OnGetResponse(void* ptr)
         cout << "produce msg reply success(startUid:"
             << request.start_uid() << "), svrId:"
             << svrId << endl;
-        --sendingCount;
     }
     else
     {
@@ -351,8 +350,9 @@ void ProduceMsgAsyncCall::OnResponseFail(void* ptr)
 
 void DecreaseProducerTask(uint64_t svrId)
 {
+    --sendingCount;
     gSvrInfoMutex.lock();
-    if (0 == --gSvrId2ProducerState[svrId].curTaskCount)
+    if (0 >= --gSvrId2ProducerState[svrId].curTaskCount)
     {
         gSetIdleProducer.insert(svrId);
     }
