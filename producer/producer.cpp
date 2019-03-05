@@ -23,7 +23,8 @@ void ServerImpl<producer::Producer>::HandleRpcs()
     {
         GPR_ASSERT(cq_->Next(&tag, &ok));
         GPR_ASSERT(ok);
-        static_cast<common::CallData*>(tag)->Proceed();
+        thread t = thread(&common::CallData::Proceed, static_cast<common::CallData*>(tag));
+        t.detach();
     }
 }
 
