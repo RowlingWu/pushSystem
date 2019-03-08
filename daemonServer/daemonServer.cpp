@@ -334,8 +334,9 @@ void ProduceMsgAsyncCall::OnGetResponse(void* ptr)
     }
     else
     {
-        cout << "get errCode. re-send. svrId:"
-            << svrId << endl;
+        cout << "get errCode, svrId:" << svrId
+            << ". Re-send, startUid:"
+            << request.start_uid() << endl;
         sleep(1);
         daemonServer.SelectProducerAndSend(request);
     }
@@ -346,7 +347,8 @@ void ProduceMsgAsyncCall::OnResponseFail(void* ptr)
     DecreaseProducerTask(svrId);
     ServerImpl& daemonServer = *((ServerImpl*)ptr);
     cout << "send msg fail, svrId:" << svrId
-        << ". re-send.\n";
+        << ". Re-send, startUid:" << request.start_uid()
+        << endl;
     sleep(1);
     daemonServer.SelectProducerAndSend(request);
 }
