@@ -47,7 +47,7 @@ private:
 class ProduceMsgCallData : public common::CallData
 {
 public:
-    ProduceMsgCallData(Producer::AsyncService* service, ServerCompletionQueue* cq, ProducerImpl* p);
+    ProduceMsgCallData(Producer::AsyncService* service, ServerCompletionQueue* cq);
     void Proceed();
     void NotifyOne();
 
@@ -61,8 +61,6 @@ private:
     ServerAsyncResponseWriter<ProduceMsgReply> responder_;
     uint32_t waitForSendCount;
     mutex waitForSndCntMtx;
-
-    ProducerImpl* pProducerImpl;
 };
 
 

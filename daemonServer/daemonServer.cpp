@@ -217,7 +217,10 @@ void ServerImpl::SelectProducerAndSend(const ProduceMsgRequest& request)
         ProduceMsgRequest req;
         req.set_msg_id(request.msg_id());
         req.set_start_uid(curUid);
-        req.set_end_uid(curUid + UID_COUNT_PER_TIME - 1);
+        req.set_end_uid((curUid + UID_COUNT_PER_TIME - 1
+                > (uint64_t)request.end_uid()) ?
+                request.end_uid() :
+                curUid + UID_COUNT_PER_TIME - 1);
 
         gSvrInfoMutex.lock();
         uint32_t producerSize = gSvrId2ProducerState.size();
@@ -352,7 +355,9 @@ void DecreaseProducerTask(uint64_t svrId)
 {
     --sendingCount;
     gSvrInfoMutex.lock();
-    if (0 >= --gSvrId2ProducerState[svrId].curTaskCount)
+    uint32_t curTask =
+        --(gSvrId2ProducerState[svrId].curTaskCount);
+    if (0 >= curTask)
     {
         gSetIdleProducer.insert(svrId);
     }
@@ -381,14 +386,17 @@ void ServerImpl::Run()
 
 void ServerImpl::HandleRpcs()
 {
+    checkProcAliveThread_ = thread(&ServerImpl::CheckProcAlive, this);
+    loadBalanceThread_ = thread(&ServerImpl::ReBalanceTimer, this);
+    handleCallBackThread_ = thread(&common::AsyncCompleteRpc, this, &gCQ); // daemon will send req to servers(etc. producers), and should handle replies from these svrs
+    checkProcAliveThread_.detach();
+    loadBalanceThread_.detach();
+    handleCallBackThread_.detach();
+
     new ClientRegisterCallData(&service_, cq_.get());
     new HeartBeatCallData(&service_, cq_.get());
     new BeginPushCallData(&service_, cq_.get(), this);
     new LoadBalanceCallData(&service_, cq_.get());
-    checkProcAliveThread_ = thread(&ServerImpl::CheckProcAlive, this);
-    loadBalanceThread_ = thread(&ServerImpl::ReBalanceTimer, this);
-
-    handleCallBackThread_ = thread(&common::AsyncCompleteRpc, this, &gCQ); // daemon will send req to servers(etc. producers), and should handle replies from these svrs
 
     void* tag;
     bool ok;

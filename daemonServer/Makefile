@@ -1,6 +1,6 @@
 CXX = g++ -I/home/l/grpc/include -I.
 CPPFLAGS += `pkg-config --cflags protobuf grpc`
-CXXFLAGS += -std=c++11 -ggdb -fpermissive
+CXXFLAGS += -std=c++11 -fpermissive
 LDFLAGS += -L/usr/local/lib -L/home/l/grpc/libs/opt \
 		  `pkg-config --libs protobuf grpc++ grpc` \
 		  -Wl,--no-as-needed -lgrpc++_reflection -Wl,--as-needed\

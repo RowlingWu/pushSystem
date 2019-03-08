@@ -1,6 +1,6 @@
 CXX = g++ -I/home/l/grpc/include -I. \
 	  -I/home/l/hiredis
-CXXFLAGS += -std=c++11 -ggdb
+CXXFLAGS += -std=c++11 
 LDFLAGS += -L/usr/local/lib \
 		   -L/usr/lib64/mysql \
 		  -Wl,--no-as-needed -Wl,--as-needed\

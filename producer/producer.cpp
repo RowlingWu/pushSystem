@@ -7,6 +7,7 @@ template<>
 void ServerImpl<producer::Producer>::HandleRpcs()
 {
     producer::InitProducer();
+    new producer::ProduceMsgCallData(&service_, cq_.get());
 
     producer::ProducerImpl producerImpl(
             grpc::CreateChannel(
@@ -15,7 +16,6 @@ void ServerImpl<producer::Producer>::HandleRpcs()
     );
     thread t = thread(&producer::ProducerImpl::SendLoadBalanceInfo, &producerImpl);
     t.detach();
-    new producer::ProduceMsgCallData(&service_, cq_.get(), &producerImpl);
 
     void* tag;
     bool ok;
@@ -40,9 +40,9 @@ mutex gMQProducerMtx;
 atomic<int32_t> taskCount(0);
 const int BITS_PER_BYTE = 8;
 
-ProduceMsgCallData::ProduceMsgCallData(Producer::AsyncService* service, ServerCompletionQueue* cq, ProducerImpl* p) :
+ProduceMsgCallData::ProduceMsgCallData(Producer::AsyncService* service, ServerCompletionQueue* cq) :
     CallData(cq), service_(service),
-    responder_(&ctx_), pProducerImpl(p)
+    responder_(&ctx_)
 {
     Proceed();
 }
@@ -56,7 +56,7 @@ void ProduceMsgCallData::Proceed()
     }
     else if (status_ == PROCESS)
     {
-        new ProduceMsgCallData(service_, cq_, pProducerImpl);
+        new ProduceMsgCallData(service_, cq_);
 
         reply_.set_err(common::ERR);
         cout << "Start producing msg. msgId:"

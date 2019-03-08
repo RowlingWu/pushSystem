@@ -4,8 +4,8 @@ namespace user_info_update
 {
     
 const uint32_t COUNTS_PER_LOOP = 10240;
-const uint64_t END_UID = 200000000;
-const uint32_t DIFF_PERCENTAGE = 90000;
+const uint64_t END_UID = 100000000;
+const uint32_t DIFF_PERCENTAGE = 100;
 vector<string> tableNames = {
     "official_fans",
     "month_active_users",
@@ -164,7 +164,7 @@ void UpdateUserInfo(const int32_t tag)
         }
         uint32_t bitcounts = redisRes->integer;
         redisHandler.freeReply();
-        uint32_t diff = bitcounts * 1000000
+        double diff = (double)bitcounts * 100
             / (double)END_UID;
         cout << "Diff count:" << bitcounts
             << ". Diff percentage:" << diff << endl;
@@ -216,8 +216,8 @@ void UpdateUserInfo(const int32_t tag)
                 << tag << "," << (uint64_t)now << ")";
             if (!mysqlHandler.command(sscmd.str().c_str(), res))
             {
-                cout << "Stop update " << USER_INFO_KEY[tag]
-                    << endl;
+                cout << "Stop update "
+                    << USER_INFO_KEY[tag] << endl;
                 return;
             }
             mysqlHandler.freeResult();

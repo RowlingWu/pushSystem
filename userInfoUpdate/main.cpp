@@ -10,7 +10,7 @@ int main()
         CheckAndUpdateUserInfo(1); //MONTH_ACTIVE_USER
         CheckAndUpdateUserInfo(2); //PUSH_SWITCH_OPENED
 
-        sleep(10);
+        sleep(30 * 60);
     }
     cout << "Process Exit\n";
 }
