@@ -70,13 +70,14 @@ struct ServerInfo
 };
 
 extern map<uint64_t, ServerInfo> gSvrId2SvrInfo;
+extern uint32_t sendingCount;
 extern mutex gSvrInfoMutex;
 
 extern CompletionQueue gCQ;
 
-extern atomic<uint32_t> sendingCount;
 
 extern const uint64_t UID_COUNT_PER_TIME;
+extern const uint32_t FAIL_COUNT_LIMIT;
 
 
 class ClientRegisterCallData : public common::CallData
@@ -163,12 +164,14 @@ struct ProducerState
 {
     ProducerCaller producerCaller;
     uint32_t curTaskCount;
-    ProducerState() : curTaskCount(0) {}
-    ProducerState(ProducerCaller pc, uint32_t n) : producerCaller(pc), curTaskCount(n) {}
+    uint32_t failCount;
+    ProducerState() : curTaskCount(0), failCount(0) {}
+    ProducerState(ProducerCaller pc, uint32_t n) : producerCaller(pc), curTaskCount(n), failCount(0) {}
     ProducerState& operator=(ProducerState& other)
     {
         producerCaller = other.producerCaller;
         curTaskCount = other.curTaskCount;
+        failCount = other.failCount;
         return *this;
     }
 };

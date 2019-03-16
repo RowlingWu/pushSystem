@@ -22,9 +22,16 @@ void ServerImpl<producer::Producer>::HandleRpcs()
     while (true)
     {
         GPR_ASSERT(cq_->Next(&tag, &ok));
-        GPR_ASSERT(ok);
-        thread t = thread(&common::CallData::Proceed, static_cast<common::CallData*>(tag));
-        t.detach();
+        if (ok)
+        {
+            thread t = thread(&common::CallData::Proceed, static_cast<common::CallData*>(tag));
+            t.detach();
+        }
+        else
+        {
+            cout << "GPR_ASSERT fail!\n";
+            delete static_cast<common::CallData*>(tag);
+        }
     }
 }
 

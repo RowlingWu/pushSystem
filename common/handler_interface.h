@@ -27,6 +27,7 @@ public:
     CallData(ServerCompletionQueue* cq) :
         cq_(cq), status_(CREATE)
     {}
+    virtual ~CallData() {}
     virtual void Proceed() = 0;
 
 protected:
@@ -38,25 +39,33 @@ protected:
     CallStatus status_;
 };
 
+static void HandleAsyncCall(void* got_tag, bool ok, void* ptr)
+{
+    daemon_client::AsyncCall* call = static_cast<daemon_client::AsyncCall*>(got_tag);
+    GPR_ASSERT(ok);
+    if (call->status.ok())
+    {
+        call->OnGetResponse(ptr);
+    }
+    else
+    {
+        cout << "error_code:"
+            << call->status.error_code()
+            << ", error_msg:"
+            << call->status.error_message() << endl;
+        call->OnResponseFail(ptr);
+    }
+    delete call;
+}
+
 static void AsyncCompleteRpc(void* ptr, CompletionQueue* cq_)
 {
     void* got_tag;
     bool ok = false;
     while (cq_->Next(&got_tag, &ok))
     {
-        daemon_client::AsyncCall* call = static_cast<daemon_client::AsyncCall*>(got_tag);
-        GPR_ASSERT(ok);
-        if (call->status.ok())
-        {
-            call->OnGetResponse(ptr);
-        }
-        else
-        {
-            cout << "error_code:" << call->status.error_code()
-                << ", error_msg:" << call->status.error_message() << endl;
-            call->OnResponseFail(ptr);
-        }
-        delete call;
+        thread t = thread(&HandleAsyncCall, got_tag, ok, ptr);
+        t.detach();
     }
 }
 

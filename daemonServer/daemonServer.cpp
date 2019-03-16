@@ -11,9 +11,10 @@ unordered_map<uint64_t, ProducerState> gSvrId2ProducerState;
 set<uint64_t> gSetIdleProducer;
 
 CompletionQueue gCQ;
-atomic<uint32_t> sendingCount(0);
+uint32_t sendingCount = 0;
 
 const uint64_t UID_COUNT_PER_TIME = 4096;
+const uint32_t FAIL_COUNT_LIMIT = 50;
 
 const double ServerImpl::ALIVE_DURATION = 10; // sec
 
@@ -38,7 +39,10 @@ void ClientRegisterCallData::Proceed()
         gSvrInfoMutex.lock();
         if (gSvrId2SvrInfo.empty())
         {
-            reply_.set_server_id(1001);
+            mt19937 rng;
+            rng.seed(random_device()());
+            uniform_int_distribution<mt19937::result_type> dist(0, INT_MAX);
+            reply_.set_server_id(dist(rng));
         }
         else
         {
@@ -240,8 +244,7 @@ cout << "[" << __func__ << "(idle)]curUid:" << req.start_uid()
     << " endUid:" << (uint64_t)req.end_uid()
     << " svrId:" << svrId << endl;
         }
-        else if (sendingCount.load() <=
-                3 * producerSize &&
+        else if (sendingCount <= 3 * producerSize &&
                 producerSize != 0)
         {
             ++sendingCount;
@@ -344,6 +347,24 @@ void ProduceMsgAsyncCall::OnGetResponse(void* ptr)
 
 void ProduceMsgAsyncCall::OnResponseFail(void* ptr)
 {
+    gSvrInfoMutex.lock();
+    auto pProducer = gSvrId2ProducerState.find(svrId);
+    if (pProducer != gSvrId2ProducerState.end())
+    {   // circuit breaker
+        ++pProducer->second.failCount;
+        if (pProducer->second.failCount > FAIL_COUNT_LIMIT)
+        {
+            cout << "Too many failures on this server,"
+                << "svrId:" << svrId
+                << ". Disconnect it automatically.\n";
+            gSetIdleProducer.erase(svrId);
+            gSvrId2ProducerState.erase(pProducer);
+            gSvrId2SvrInfo.erase(svrId);
+            Rebalance();
+        }
+    }
+    gSvrInfoMutex.unlock();
+
     DecreaseProducerTask(svrId);
     ServerImpl& daemonServer = *((ServerImpl*)ptr);
     cout << "send msg fail, svrId:" << svrId
@@ -355,13 +376,16 @@ void ProduceMsgAsyncCall::OnResponseFail(void* ptr)
 
 void DecreaseProducerTask(uint64_t svrId)
 {
-    --sendingCount;
     gSvrInfoMutex.lock();
-    uint32_t curTask =
-        --(gSvrId2ProducerState[svrId].curTaskCount);
-    if (0 >= curTask)
+    --sendingCount;
+    auto p = gSvrId2ProducerState.find(svrId);
+    if (p != gSvrId2ProducerState.end())
     {
-        gSetIdleProducer.insert(svrId);
+        uint32_t curTask = --(p->second.curTaskCount);
+        if (0 >= curTask)
+        {
+            gSetIdleProducer.insert(svrId);
+        }
     }
     gSvrInfoMutex.unlock();
 }
@@ -441,6 +465,11 @@ void ServerImpl::CheckProcAlive()
                 continue;
             }
             ++it;
+        }
+        for (auto p = gSvrId2ProducerState.begin();
+                p != gSvrId2ProducerState.end(); ++p)
+        {
+            p->second.failCount = 0;
         }
 
         gSvrInfoMutex.unlock();
